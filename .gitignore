@@ -1,0 +1,29 @@
+# Flutter
+.dart_tool/
+.packages
+.pub-cache/
+build/
+.idea/
+android/.gradle/
+ios/Pods/
+*.iml
+
+build/
+.dart_tool/
+linux/
+macos/
+windows/
+web/
+.metadata
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Others
+*.lock
+*.tmp
+ 
