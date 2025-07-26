@@ -14,7 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final FocusNode emailFocus = FocusNode();
   final FocusNode passwordFocus = FocusNode();
 
-  bool showPassword = false; 
+  bool showPassword = true;
 
   void _togglePasswordVisibility() {
     setState(() {
@@ -80,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
             TextFormField(
               controller: passwordController,
               focusNode: passwordFocus,
-              obscureText: !showPassword, 
+              obscureText: showPassword,
               decoration: InputDecoration(
                 labelText: 'Password',
                 prefixIcon: const Icon(
@@ -133,11 +133,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Home(),
                     transitionsBuilder:
                         (context, animation, secondaryAnimation, child) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      );
-                    },
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
                   ),
                 );
               },

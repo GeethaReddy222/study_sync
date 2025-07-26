@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/main_screen.dart';
 
 void main() {
@@ -14,7 +15,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Study Sync',
       theme: studySyncTheme,
-      home: MainScreen(),
+      home: AddTaskScreen(),
     );
   }
 
