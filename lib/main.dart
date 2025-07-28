@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:study_sync/screens/auth/login_screen.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/main_screen.dart';
+import 'firebase_options.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -44,14 +48,9 @@ class MyApp extends StatelessWidget {
         backgroundColor: Colors.indigo.shade400,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         elevation: 0,
-        textStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -73,14 +72,8 @@ class MyApp extends StatelessWidget {
       labelStyle: TextStyle(color: Colors.grey[600], fontSize: 15),
     ),
     textTheme: const TextTheme(
-      headlineSmall: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.w600,
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.normal,
-      ),
+      headlineSmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+      bodyMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.normal),
     ),
   );
 }

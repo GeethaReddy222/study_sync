@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:study_sync/screens/auth/login_screen.dart';
 
@@ -13,12 +15,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _termsAccepted = false;
   bool _isLoading = false;
+  bool _hasSubmitted = false;
 
   @override
   void dispose() {
@@ -55,7 +59,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  void _register() {
+  Future<void> _register() async {
+    setState(() => _hasSubmitted = true);
+
     if (!_formKey.currentState!.validate()) return;
     if (!_termsAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,13 +71,59 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+
+    try {
+      // Create user with email and password
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+
+      // Store user details in Firestore
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(userCredential.user!.uid)
+          .set({
+            'uid': userCredential.user!.uid,
+            'name': _nameController.text.trim(),
+            'email': _emailController.text.trim(),
+            'createdAt': Timestamp.now(),
+          });
+
+      // Show success message
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Registration successful!')));
+
+      // Navigate to login screen after successful registration
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
-    });
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      if (e.code == 'weak-password') {
+        errorMessage = 'The password provided is too weak.';
+      } else if (e.code == 'email-already-in-use') {
+        errorMessage = 'The account already exists for that email.';
+      } else {
+        errorMessage = 'Error: ${e.message}';
+      }
+      print(errorMessage);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
+    } catch (e) {
+      print(e);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -91,7 +143,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
             padding: const EdgeInsets.all(24),
             child: Form(
               key: _formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
+              autovalidateMode: _hasSubmitted
+                  ? AutovalidateMode.always
+                  : AutovalidateMode.disabled,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -112,6 +166,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: 'Email Address',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
+                    keyboardType: TextInputType.emailAddress,
                     validator: _validateEmail,
                   ),
                   const SizedBox(height: 20),
@@ -122,10 +177,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword 
-                            ? Icons.visibility_off_outlined 
-                            : Icons.visibility_outlined),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
                     validator: _validatePassword,
@@ -143,10 +202,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: 'Confirm Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscureConfirmPassword 
-                            ? Icons.visibility_off_outlined 
-                            : Icons.visibility_outlined),
-                        onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscureConfirmPassword =
+                              !_obscureConfirmPassword,
+                        ),
                       ),
                     ),
                     validator: _validateConfirmPassword,
@@ -156,11 +220,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     children: [
                       Checkbox(
                         value: _termsAccepted,
-                        onChanged: (value) => setState(() => _termsAccepted = value ?? false),
+                        onChanged: (value) =>
+                            setState(() => _termsAccepted = value ?? false),
                       ),
                       Flexible(
                         child: GestureDetector(
-                          onTap: () {/* Show terms */},
+                          onTap: () {
+                            // Show terms and conditions
+                          },
                           child: Text.rich(
                             TextSpan(
                               text: 'I agree to the ',
@@ -168,7 +235,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 TextSpan(
                                   text: 'Terms & Conditions',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -196,18 +265,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Expanded(child: Divider()),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('or', style: Theme.of(context).textTheme.bodyMedium),
+                        child: Text(
+                          'or',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ),
                       const Expanded(child: Divider()),
                     ],
                   ),
                   const SizedBox(height: 30),
                   OutlinedButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      // Handle Google sign in
+                    },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Image.asset('assets/images/google.png', width: 24, height: 24),
+                        Image.asset(
+                          'assets/images/google.png',
+                          width: 24,
+                          height: 24,
+                        ),
                         const SizedBox(width: 12),
                         const Text('Continue with Google'),
                       ],
@@ -217,7 +295,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
+                      ),
                     ),
                     child: Text.rich(
                       TextSpan(

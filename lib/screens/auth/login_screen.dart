@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
@@ -18,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _showPassword = true;
   bool _isLoading = false;
+  bool _submitted = false; 
 
   @override
   void dispose() {
@@ -28,25 +31,82 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _togglePasswordVisibility() => setState(() => _showPassword = !_showPassword);
+  void _togglePasswordVisibility() =>
+      setState(() => _showPassword = !_showPassword);
 
-  void _login() {
+  Future<void> _login() async {
+    setState(() => _submitted = true);
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          )
+          .timeout(const Duration(seconds: 10));
+
       if (!mounted) return;
-      Navigator.pushReplacement(
+
+      await Navigator.pushReplacement(
         context,
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const Home(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
+        MaterialPageRoute(builder: (context) => const Home()),
       );
-    });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Login Successful')));
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = 'No user found with this email';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Incorrect password';
+          break;
+        case 'user-disabled':
+          errorMessage = 'This account has been disabled';
+          break;
+        case 'invalid-email':
+          errorMessage = 'Invalid email format';
+          break;
+        case 'too-many-requests':
+          errorMessage = 'Too many attempts. Try again later';
+          break;
+        default:
+          errorMessage =
+              'Login failed: ${e.message}'; // Include original message
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
+      }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connection timed out. Please try again'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred: ${e.toString()}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -63,7 +123,10 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
-          autovalidateMode: AutovalidateMode.onUserInteraction,
+          // Only validate after submission or when field loses focus
+          autovalidateMode: _submitted
+              ? AutovalidateMode.always
+              : AutovalidateMode.disabled,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -80,12 +143,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your email';
                   }
-                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                  if (!RegExp(
+                    r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                  ).hasMatch(value)) {
                     return 'Enter a valid email address';
                   }
                   return null;
                 },
                 onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                // Validate when field loses focus
+                onChanged: (_) {
+                  if (_submitted) {
+                    _formKey.currentState!.validate();
+                  }
+                },
               ),
               const SizedBox(height: 20),
               TextFormField(
@@ -112,6 +183,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     return 'Password must be at least 6 characters';
                   }
                   return null;
+                },
+                // Validate when field loses focus
+                onChanged: (_) {
+                  if (_submitted) {
+                    _formKey.currentState!.validate();
+                  }
                 },
               ),
               const SizedBox(height: 8),
