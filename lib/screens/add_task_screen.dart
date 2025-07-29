@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:study_sync/models/task_model.dart';
 
 class AddTaskScreen extends StatefulWidget {
   const AddTaskScreen({super.key});
@@ -96,41 +97,31 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
 
-      // Combine date and time
-      final dueDateTime = DateTime(
-        _dueDate!.year,
-        _dueDate!.month,
-        _dueDate!.day,
-        _dueTime!.hour,
-        _dueTime!.minute,
+      // Create Task object
+      final newTask = Task(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        dueDate: DateTime(
+          _dueDate!.year,
+          _dueDate!.month,
+          _dueDate!.day,
+          _dueTime!.hour,
+          _dueTime!.minute,
+        ),
+        priority: _priority!,
+        category: _category!,
+        repeatOption: _repeatOption,
+        repeatDay: _selectedWeekday,
+        repeatCount: _repeatCount,
+        repeatUnit: _selectedUnit,
       );
 
-      // Create task data
-      final taskData = {
-        "title": _titleController.text.trim(),
-        "description": _descriptionController.text.trim(),
-        "dueDate": dueDateTime,
-        "priority": _priority,
-        "category": _category,
-        "repeatOption": _repeatOption,
-        "createdAt": FieldValue.serverTimestamp(),
-        "completed": false,
-      };
-
-      // Add repeat-specific fields if needed
-      if (_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') {
-        taskData['repeatDay'] = _selectedWeekday;
-      } else if (_repeatOption == 'Custom...' && _repeatCount != null) {
-        taskData['repeatCount'] = _repeatCount;
-        taskData['repeatUnit'] = _selectedUnit;
-      }
-
-      // Add task to Firestore
+      // Add task to Firestore using the model's toFirestore() method
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('tasks')
-          .add(taskData);
+          .add(newTask.toFireStore());
 
       _showSuccessDialog();
     } catch (e) {
