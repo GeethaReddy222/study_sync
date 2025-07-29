@@ -259,7 +259,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           )
                         : const Text('Create Account'),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   Row(
                     children: [
                       const Expanded(child: Divider()),
@@ -273,25 +273,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Expanded(child: Divider()),
                     ],
                   ),
-                  const SizedBox(height: 30),
-                  OutlinedButton(
-                    onPressed: () {
-                      // Handle Google sign in
-                    },
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          'assets/images/google.png',
-                          width: 24,
-                          height: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('Continue with Google'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                  
+                 
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,

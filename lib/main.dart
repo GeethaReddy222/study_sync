@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/auth/login_screen.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/main_screen.dart';
@@ -29,6 +30,10 @@ class MyApp extends StatelessWidget {
   }
 
   static final ThemeData _studySyncTheme = ThemeData(
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    ),
     primarySwatch: Colors.indigo,
     scaffoldBackgroundColor: Colors.grey[50],
     fontFamily: 'Roboto',

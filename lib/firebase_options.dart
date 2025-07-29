@@ -68,7 +68,9 @@ class DefaultFirebaseOptions {
     appId: '1:454503718694:ios:11f042ad3ba62b953f2be7',
     messagingSenderId: '454503718694',
     projectId: 'study-sync-3e158',
-    storageBucket: 'study-sync-3e158.firebasestorage.app',
+    storageBucket: 'study-sync-3e158.appspot.com',
+    iosClientId:
+        '454503718694-a2cpso7r2ab2m2ssbhi0599h71v6c0dn.apps.googleusercontent.com',
     iosBundleId: 'com.example.studySync',
   );
 }

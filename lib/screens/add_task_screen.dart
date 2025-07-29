@@ -1,5 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 
 class AddTaskScreen extends StatefulWidget {
@@ -73,27 +74,64 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _priority == null ||
         _category == null ||
         _dueDate == null ||
-        _dueTime == null)
+        _dueTime == null) {
       return;
+    }
 
     if (!_validateTimeForToday()) {
       _showTimeValidationError();
       return;
     }
 
+    // Adjust date for weekly/bi-weekly repeats
     if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
         _selectedWeekday != null) {
-      DateTime nextDate = _calculateNextWeeklyDate();
-      setState(
-        () => _dueDate = DateTime(nextDate.year, nextDate.month, nextDate.day),
-      );
+      _dueDate = _calculateNextWeeklyDate();
       await _showRepeatConfirmationDialog();
     }
 
     setState(() => _isSubmitting = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+
+      // Combine date and time
+      final dueDateTime = DateTime(
+        _dueDate!.year,
+        _dueDate!.month,
+        _dueDate!.day,
+        _dueTime!.hour,
+        _dueTime!.minute,
+      );
+
+      // Create task data
+      final taskData = {
+        "title": _titleController.text.trim(),
+        "description": _descriptionController.text.trim(),
+        "dueDate": dueDateTime,
+        "priority": _priority,
+        "category": _category,
+        "repeatOption": _repeatOption,
+        "createdAt": FieldValue.serverTimestamp(),
+        "completed": false,
+      };
+
+      // Add repeat-specific fields if needed
+      if (_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') {
+        taskData['repeatDay'] = _selectedWeekday;
+      } else if (_repeatOption == 'Custom...' && _repeatCount != null) {
+        taskData['repeatCount'] = _repeatCount;
+        taskData['repeatUnit'] = _selectedUnit;
+      }
+
+      // Add task to Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .add(taskData);
+
       _showSuccessDialog();
     } catch (e) {
       _showErrorDialog(e.toString());
@@ -199,7 +237,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
     );
-    if (picked != null) setState(() => _dueDate = picked);
+    if (picked != null) {
+      setState(() {
+        _dueDate = picked;
+        if (_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') {
+          _selectedWeekday = _weekdays[picked.weekday % 7];
+        }
+      });
+    }
   }
 
   Future<void> _selectTime(BuildContext context) async {
@@ -207,7 +252,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       context: context,
       initialTime: TimeOfDay.now(),
     );
-    if (picked != null) setState(() => _dueTime = picked);
+    if (picked != null) {
+      setState(() => _dueTime = picked);
+    }
   }
 
   @override
@@ -469,15 +516,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   }),
                 ),
                 const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitTask,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Add Task'),
+                Center(
+                  child: SizedBox(
+                    width: 200, // <-- Set your desired width
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _submitTask,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Add Task'),
+                    ),
+                  ),
                 ),
               ],
             ),

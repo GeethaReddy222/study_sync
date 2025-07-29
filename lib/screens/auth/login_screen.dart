@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
 
@@ -17,10 +19,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+    clientId: kIsWeb ? null : '454503718694-2al5fr2bip3er1u4d65k67qh9e0ct6je.apps.googleusercontent.com',
+  );
 
   bool _showPassword = true;
   bool _isLoading = false;
-  bool _submitted = false; 
+  bool _submitted = false;
+  bool _isGoogleLoading = false;
 
   @override
   void dispose() {
@@ -31,12 +38,10 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _togglePasswordVisibility() =>
-      setState(() => _showPassword = !_showPassword);
+  void _togglePasswordVisibility() => setState(() => _showPassword = !_showPassword);
 
   Future<void> _login() async {
     setState(() => _submitted = true);
-
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -50,62 +55,118 @@ class _LoginScreenState extends State<LoginScreen> {
           .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
-
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const Home()),
       );
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Login Successful')));
+      _showSnackBar('Login Successful');
     } on FirebaseAuthException catch (e) {
-      String errorMessage;
-      switch (e.code) {
-        case 'user-not-found':
-          errorMessage = 'No user found with this email';
-          break;
-        case 'wrong-password':
-          errorMessage = 'Incorrect password';
-          break;
-        case 'user-disabled':
-          errorMessage = 'This account has been disabled';
-          break;
-        case 'invalid-email':
-          errorMessage = 'Invalid email format';
-          break;
-        case 'too-many-requests':
-          errorMessage = 'Too many attempts. Try again later';
-          break;
-        default:
-          errorMessage =
-              'Login failed: ${e.message}'; // Include original message
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(errorMessage)));
-      }
+      _handleAuthError(e);
     } on TimeoutException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Connection timed out. Please try again'),
-          ),
-        );
-      }
+      _showSnackBar('Connection timed out. Please try again');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An unexpected error occurred: ${e.toString()}'),
-          ),
-        );
-      }
+      _showSnackBar('An unexpected error occurred: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        setState(() => _isGoogleLoading = false);
+        return;
       }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (!mounted) return;
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const Home()),
+      );
+      _showSnackBar('Google Sign-In Successful');
+    } on FirebaseAuthException catch (e) {
+      _handleAuthError(e);
+    } catch (e) {
+      _showSnackBar('Google Sign-In failed: ${e.toString()}');
+      // For web-specific debugging:
+      if (kIsWeb) debugPrint('Web Google Sign-In error details: $e');
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
+
+  Future<void> _sendPasswordResetEmail() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      _showSnackBar('Please enter your email first');
+      return;
+    }
+
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      _showSnackBar('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      _showSnackBar('Password reset email sent to $email');
+    } on FirebaseAuthException catch (e) {
+      _handleAuthError(e);
+    } catch (e) {
+      _showSnackBar('An error occurred: ${e.toString()}');
+    }
+  }
+
+  void _handleAuthError(FirebaseAuthException e) {
+    String errorMessage;
+    switch (e.code) {
+      case 'user-not-found':
+        errorMessage = 'No user found with this email';
+        break;
+      case 'wrong-password':
+        errorMessage = 'Incorrect password';
+        break;
+      case 'user-disabled':
+        errorMessage = 'This account has been disabled';
+        break;
+      case 'invalid-email':
+        errorMessage = 'Invalid email format';
+        break;
+      case 'too-many-requests':
+        errorMessage = 'Too many attempts. Try again later';
+        break;
+      case 'account-exists-with-different-credential':
+        errorMessage = 'Account already exists with different credentials';
+        break;
+      case 'operation-not-allowed':
+        errorMessage = 'Google Sign-In is not enabled';
+        break;
+      default:
+        errorMessage = 'Authentication failed: ${e.message}';
+    }
+    _showSnackBar(errorMessage);
+  }
+
+  void _showSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        )
+      );
     }
   }
 
@@ -123,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
-          // Only validate after submission or when field loses focus
           autovalidateMode: _submitted
               ? AutovalidateMode.always
               : AutovalidateMode.disabled,
@@ -137,26 +197,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your email';
                   }
-                  if (!RegExp(
-                    r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                  ).hasMatch(value)) {
+                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
                     return 'Enter a valid email address';
                   }
                   return null;
                 },
                 onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-                // Validate when field loses focus
-                onChanged: (_) {
-                  if (_submitted) {
-                    _formKey.currentState!.validate();
-                  }
-                },
               ),
               const SizedBox(height: 20),
               TextFormField(
@@ -166,6 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _showPassword
@@ -184,24 +238,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   }
                   return null;
                 },
-                // Validate when field loses focus
-                onChanged: (_) {
-                  if (_submitted) {
-                    _formKey.currentState!.validate();
-                  }
-                },
               ),
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: _sendPasswordResetEmail,
                   child: const Text('Forgot Password?'),
                 ),
               ),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: _isLoading ? null : _login,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,
@@ -226,30 +277,38 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 30),
               OutlinedButton(
-                onPressed: () {},
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      'assets/images/google.png',
-                      width: 24,
-                      height: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Continue with Google'),
-                  ],
+                onPressed: _isGoogleLoading ? null : _signInWithGoogle,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: BorderSide(color: Theme.of(context).dividerColor),
                 ),
+                child: _isGoogleLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/images/google.png',
+                            width: 24,
+                            height: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Continue with Google'),
+                        ],
+                      ),
               ),
               const SizedBox(height: 20),
               TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterScreen(),
-                    ),
-                  );
-                },
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RegisterScreen(),
+                  ),
+                ),
                 child: Text.rich(
                   TextSpan(
                     text: "Don't have an account? ",
