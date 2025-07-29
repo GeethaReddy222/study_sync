@@ -1,370 +1,155 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:study_sync/screens/add_task_screen.dart';
+import 'package:study_sync/screens/dairy_screen.dart';
+import 'package:study_sync/screens/progress_screen.dart';
+import 'package:study_sync/widgets/home_drawer.dart';
 
-class Home extends StatefulWidget {
-  const Home({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<Home> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<Home> {
-  final List<Map<String, dynamic>> _tasks = [
-    {
-      'id': '1',
-      'title': 'Complete Math Assignment',
-      'dueDate': DateTime.now().add(const Duration(days: 1)),
-      'priority': 'High',
-      'category': 'Study',
-      'completed': false,
-    },
-    {
-      'id': '2',
-      'title': 'Read Chapter 5 of Physics',
-      'dueDate': DateTime.now().add(const Duration(days: 2)),
-      'priority': 'Medium',
-      'category': 'Study',
-      'completed': false,
-    },
-  ];
-
+class _HomeScreenState extends State<HomeScreen> {
+  final User? user = FirebaseAuth.instance.currentUser;
+  bool isLoading = true;
+  Map<String, dynamic>? userData;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
-  final PageController _pageController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    _getUser();
+  }
+
+  Future<void> _getUser() async {
+    if (user == null) {
+      if (mounted) setState(() => isLoading = false);
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user!.uid)
+          .get();
+
+      if (doc.exists) {
+        if (mounted) {
+          setState(() {
+            userData = doc.data();
+            isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => isLoading = false);
+        debugPrint('User document does not exist');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+      debugPrint('Error fetching user data: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to load user data')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
-        title: const Text('StudySync'),
+        title: const Text("StudySync"),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.calendar_today), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
+          IconButton(
+            icon: const Icon(Icons.notifications),
+            onPressed: () {
+              // Handle notification button press
+            },
+          ),
         ],
       ),
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        children: [
-          // Tasks Tab
-          _buildTasksTab(),
-          // Progress Tab
-          _buildProgressTab(),
-          // Profile Tab
-          _buildProfileTab(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final newTask = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => AddTaskScreen()),
-          );
-
-          if (newTask != null) {
-            setState(() {
-              _tasks.add(newTask);
-            });
-          }
-        },
-        child: const Icon(Icons.add),
+      drawer: const HomeDrawer(),
+      body: SafeArea(
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : userData == null
+            ? const Center(child: Text('User data not available'))
+            : _getCurrentPage(),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-            _pageController.animateToPage(
-              index,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          });
-        },
+        onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.task), label: 'Tasks'),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.analytics),
+            icon: Icon(Icons.bar_chart),
             label: 'Progress',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Diary'),
         ],
       ),
     );
   }
 
-  Widget _buildTasksTab() {
-    final pendingTasks = _tasks.where((task) => !task['completed']).toList();
-    final completedTasks = _tasks.where((task) => task['completed']).toList();
+  Widget _getCurrentPage() {
+    switch (_currentIndex) {
+      case 0:
+        return _buildHomeContent();
+      case 1:
+        return const ProgressScreen();
+      case 2:
+        return const DairyScreen();
+      default:
+        return _buildHomeContent();
+    }
+  }
 
+  Widget _buildHomeContent() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Greeting and Date
-          _buildHeader(),
-          const SizedBox(height: 20),
-
-          // Task Stats
-          _buildTaskStats(),
-          const SizedBox(height: 20),
-
-          // Pending Tasks
-          const Text(
-            'Pending Tasks',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          ...pendingTasks.map((task) => _buildTaskCard(task)).toList(),
-
-          // Completed Tasks (if any)
-          if (completedTasks.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const Text(
-              'Completed',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            ...completedTasks.map((task) => _buildTaskCard(task)).toList(),
-          ],
+          // Welcome Section
+          _buildWelcomeSection(context),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildWelcomeSection(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
+
       children: [
         Text(
-          'Hello, Student!',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
-          ),
+          'Welcome back,',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
         ),
+        const SizedBox(height: 8),
         Text(
-          DateFormat('EEEE, MMMM d').format(DateTime.now()),
-          style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+          userData!["name"] ?? 'User',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
+        const SizedBox(height: 8),
+        Text('Ready to study?', style: Theme.of(context).textTheme.bodyLarge),
       ],
     );
   }
-
-  Widget _buildTaskStats() {
-    final totalTasks = _tasks.length;
-    final completedCount = _tasks.where((task) => task['completed']).length;
-    final progress = totalTasks > 0 ? completedCount / totalTasks : 0;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: Colors.blue[50],
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Productivity',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[800],
-                  ),
-                ),
-                Text(
-                  '${(progress * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[800],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(
-              value: progress as double,
-              backgroundColor: Colors.blue[100],
-              color: Colors.blueAccent,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$completedCount/${_tasks.length} tasks completed',
-                  style: TextStyle(fontSize: 14, color: Colors.blue[800]),
-                ),
-                if (_tasks.isNotEmpty)
-                  Text(
-                    '${_getUrgentTasksCount()} urgent',
-                    style: TextStyle(fontSize: 14, color: Colors.red[600]),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTaskCard(Map<String, dynamic> task) {
-    final isCompleted = task['completed'] ?? false;
-    final dueDate = task['dueDate'] as DateTime?;
-    final priority = task['priority'] ?? 'Medium';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
-          children: [
-            // Checkbox
-            Checkbox(
-              value: isCompleted,
-              onChanged: (value) {
-                setState(() {
-                  task['completed'] = value ?? false;
-                });
-              },
-              shape: RoundedCircleBorder(),
-            ),
-
-            // Task Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task['title'],
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      decoration: isCompleted
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                    ),
-                  ),
-                  if (dueDate != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          size: 14,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat('MMM dd, hh:mm a').format(dueDate),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getPriorityColor(priority).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          priority,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _getPriorityColor(priority),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          task['category'] ?? 'General',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // More Options
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressTab() {
-    return Center(child: Text('Progress Analytics'));
-  }
-
-  Widget _buildProfileTab() {
-    return Center(child: Text('Profile Settings'));
-  }
-
-  int _getUrgentTasksCount() {
-    return _tasks.where((task) {
-      final dueDate = task['dueDate'] as DateTime?;
-      final isUrgent =
-          task['priority'] == 'High' &&
-          !(task['completed'] ?? false) &&
-          dueDate != null &&
-          dueDate.difference(DateTime.now()).inDays <= 1;
-      return isUrgent;
-    }).length;
-  }
-
-  Color _getPriorityColor(String priority) {
-    switch (priority) {
-      case 'High':
-        return Colors.red;
-      case 'Medium':
-        return Colors.orange;
-      case 'Low':
-        return Colors.green;
-      default:
-        return Colors.blue;
-    }
-  }
-}
-
-class RoundedCircleBorder extends RoundedRectangleBorder {
-  RoundedCircleBorder() : super(borderRadius: BorderRadius.circular(10));
 }

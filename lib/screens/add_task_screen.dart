@@ -47,6 +47,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     'Saturday',
   ];
   final List<String> _categories = [
+    "Learning",
     "Assignments",
     "Contests",
     "Projects",
