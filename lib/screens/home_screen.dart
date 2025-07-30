@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   List<Task> _tasks = [];
+  List<Task> _completedTasks = [];
+  bool _isLoadingTasks = false;
 
   @override
   void initState() {
@@ -36,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _getUser() async {
     if (user == null) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
@@ -47,78 +51,49 @@ class _HomeScreenState extends State<HomeScreen> {
           .get();
 
       if (doc.exists) {
-        setState(() {
-          userData = doc.data();
-          isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            userData = doc.data();
+            isLoading = false;
+          });
+        }
       } else {
-        setState(() => isLoading = false);
+        if (mounted) setState(() => isLoading = false);
         debugPrint('User document does not exist');
       }
     } catch (e) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
       debugPrint('Error fetching user data: $e');
-      _showSnackBar('Failed to load user data');
+      if (mounted) _showSnackBar('Failed to load user data');
     }
   }
 
   Future<void> _loadTasks() async {
-    final tasks = await _getPendingTasksForToday();
-    if (mounted) {
-      setState(() => _tasks = tasks);
-    }
-    _debugPrintTaskDates();
-  }
+    if (!mounted) return;
+    setState(() => _isLoadingTasks = true);
 
-  void _debugPrintTaskDates() {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-    debugPrint('=== DATE RANGES ===');
-    debugPrint('Now: $now');
-    debugPrint('Local Start of day: $startOfDay');
-    debugPrint('Local End of day: $endOfDay');
-    debugPrint('UTC Start of day: ${startOfDay.toUtc()}');
-    debugPrint('UTC End of day: ${endOfDay.toUtc()}');
-
-    debugPrint('=== TASKS ===');
-    for (final task in _tasks) {
-      final localDate = task.dueDate.toLocal();
-      debugPrint('Task: ${task.title}');
-      debugPrint('Due (UTC): ${task.dueDate}');
-      debugPrint('Due (Local): $localDate');
-      debugPrint(
-        'Is today: ${_isDateInRange(localDate, startOfDay, endOfDay)}',
-      );
-      debugPrint('---');
-    }
-  }
-
-  bool _isDateInRange(DateTime date, DateTime start, DateTime end) {
-    return (date.isAfter(start.subtract(const Duration(seconds: 1)))) &&
-        (date.isBefore(end.add(const Duration(seconds: 1))));
-  }
-
-  Future<void> _toggleTaskCompletion(Task task, bool newValue) async {
     try {
-      await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user!.uid)
-          .collection("tasks")
-          .doc(task.id)
-          .update({'isCompleted': newValue});
+      final tasks = await _getTasksForToday(false);
+      final completedTasks = await _getTasksForToday(true);
 
-      await _loadTasks();
+      if (mounted) {
+        setState(() {
+          _tasks = tasks;
+          _completedTasks = completedTasks;
+          _isLoadingTasks = false;
+        });
+      }
     } catch (e) {
-      _showSnackBar('Failed to update task: $e');
+      if (mounted) {
+        setState(() => _isLoadingTasks = false);
+        _showSnackBar('Failed to load tasks');
+      }
     }
   }
 
-  Future<List<Task>> _getPendingTasksForToday() async {
+  Future<List<Task>> _getTasksForToday(bool completed) async {
     if (user == null) return [];
 
-    // Get current date in local timezone (IST)
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
@@ -127,10 +102,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final queryStart = DateTime.utc(
       startOfDay.year,
       startOfDay.month,
-      startOfDay.day - 1, // Previous day in UTC
+      startOfDay.day - 1,
       18,
       30,
-      0, // 18:30 UTC = 00:00 IST
+      0,
     );
 
     final queryEnd = DateTime.utc(
@@ -139,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       endOfDay.day,
       18,
       29,
-      59, // 18:29 UTC = 23:59 IST
+      59,
     );
 
     try {
@@ -152,31 +127,121 @@ class _HomeScreenState extends State<HomeScreen> {
             isGreaterThanOrEqualTo: Timestamp.fromDate(queryStart),
           )
           .where('dueDate', isLessThanOrEqualTo: Timestamp.fromDate(queryEnd))
-          .where('isCompleted', isEqualTo: false)
+          .where('isCompleted', isEqualTo: completed)
           .get();
 
-      // Filter to local IST day
-      return query.docs.map((doc) => Task.fromFireStore(doc)).where((task) {
-        final localDue = task.dueDate.toLocal();
-        return localDue.isAfter(
-              startOfDay.subtract(const Duration(seconds: 1)),
-            ) &&
-            localDue.isBefore(endOfDay.add(const Duration(seconds: 1)));
-      }).toList();
+      return query.docs
+          .map((doc) {
+            try {
+              final task = Task.fromFireStore(doc);
+              final localDue = task.dueDate;
+              return localDue.isAfter(
+                        startOfDay.subtract(const Duration(seconds: 1)),
+                      ) &&
+                      localDue.isBefore(
+                        endOfDay.add(const Duration(seconds: 1)),
+                      )
+                  ? task
+                  : null;
+            } catch (e) {
+              debugPrint('Error parsing task ${doc.id}: $e');
+              return null;
+            }
+          })
+          .where((task) => task != null)
+          .cast<Task>()
+          .toList();
     } catch (e) {
       debugPrint('Error fetching tasks: $e');
       if (e is FirebaseException && e.code == 'failed-precondition') {
         debugPrint('Create composite index for isCompleted and dueDate');
-        _showSnackBar('Database index missing - please try again later');
+        if (mounted) {
+          _showSnackBar('Database index missing - please try again later');
+        }
       }
       return [];
     }
   }
 
+  Future<void> _toggleTaskCompletion(Task task, bool newValue) async {
+    try {
+      if (task.recurrence != 'none' && newValue) {
+        await _createNextRecurrence(task);
+      }
+      await _updateTaskCompletion(task, newValue);
+      await _loadTasks();
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to update task: ${e.toString()}');
+    }
+  }
+
+  Future<void> _createNextRecurrence(Task task) async {
+    DateTime nextDate;
+
+    switch (task.recurrence) {
+      case 'daily':
+        nextDate = task.originalDueDate.add(const Duration(days: 1));
+        break;
+      case 'weekly':
+        nextDate = task.originalDueDate.add(const Duration(days: 7));
+        break;
+      case 'biweekly':
+        nextDate = task.originalDueDate.add(const Duration(days: 14));
+        break;
+      case 'monthly':
+        nextDate = DateTime(
+          task.originalDueDate.year,
+          task.originalDueDate.month + 1,
+          min(
+            task.originalDueDate.day,
+            DateUtils.getDaysInMonth(
+              task.originalDueDate.year,
+              task.originalDueDate.month + 1,
+            ),
+          ),
+          task.originalDueDate.hour,
+          task.originalDueDate.minute,
+        );
+        break;
+      default:
+        return;
+    }
+
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user!.uid)
+        .collection("tasks")
+        .add({
+          'title': task.title,
+          'description': task.description,
+          'dueDate': Timestamp.fromDate(nextDate),
+          'priority': task.priority,
+          'category': task.category,
+          'isCompleted': false,
+          'recurrence': task.recurrence,
+          'originalDueDate': Timestamp.fromDate(nextDate),
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+        });
+  }
+
+  Future<void> _updateTaskCompletion(Task task, bool completed) async {
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user!.uid)
+        .collection("tasks")
+        .doc(task.id)
+        .update({'isCompleted': completed});
+  }
+
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
@@ -224,12 +289,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.indigo.shade400,
-        onPressed: () {
-          Navigator.push(
+        backgroundColor: Colors.indigo,
+        onPressed: () async {
+          final result = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => AddTaskScreen()),
-          ).then((_) => _loadTasks());
+            MaterialPageRoute(builder: (context) => const AddTaskScreen()),
+          );
+          if (result == true && mounted) await _loadTasks();
         },
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -242,10 +308,10 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.3),
+            color: Colors.grey.withOpacity(0.2),
             spreadRadius: 1,
-            blurRadius: 5,
-            offset: const Offset(0, -1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
@@ -256,42 +322,44 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: (index) => setState(() => _currentIndex = index),
           selectedItemColor: Colors.indigo.shade400,
           unselectedItemColor: Colors.grey.shade600,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
           showSelectedLabels: true,
           showUnselectedLabels: true,
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           elevation: 10,
           items: [
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-                color: _currentIndex == 0
-                    ? Colors.indigo.shade400
-                    : Colors.grey.shade600,
-              ),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.bar_chart,
-                color: _currentIndex == 1
-                    ? Colors.indigo.shade400
-                    : Colors.grey.shade600,
-              ),
-              label: 'Progress',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.book,
-                color: _currentIndex == 2
-                    ? Colors.indigo.shade400
-                    : Colors.grey.shade600,
-              ),
-              label: 'Diary',
-            ),
+            _buildBottomNavItem(Icons.home, 'Home', 0),
+            _buildBottomNavItem(Icons.bar_chart, 'Progress', 1),
+            _buildBottomNavItem(Icons.book, 'Diary', 2),
           ],
         ),
       ),
+    );
+  }
+
+  BottomNavigationBarItem _buildBottomNavItem(
+    IconData icon,
+    String label,
+    int index,
+  ) {
+    return BottomNavigationBarItem(
+      icon: Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _currentIndex == index
+              ? Colors.indigo.shade50
+              : Colors.transparent,
+        ),
+        child: Icon(
+          icon,
+          color: _currentIndex == index
+              ? Colors.indigo.shade400
+              : Colors.grey.shade600,
+        ),
+      ),
+      label: label,
     );
   }
 
@@ -316,176 +384,210 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildWelcomeSection(context),
           const SizedBox(height: 24),
-          _pendingTasksToday(context),
+          _buildTasksSection(
+            context,
+            'Pending Tasks',
+            _tasks,
+            emptyMessage: 'No pending tasks for today',
+          ),
+          const SizedBox(height: 24),
+          _buildTasksSection(
+            context,
+            'Completed Tasks',
+            _completedTasks,
+            emptyMessage: 'No completed tasks yet',
+            isCompleted: true,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildWelcomeSection(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Welcome back,',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: Colors.grey[600],
-            fontSize: 16,
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            'Welcome back',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Colors.grey[800],
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          userData!["name"] ?? 'User',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Colors.indigo.shade800,
-            fontSize: 24,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _pendingTasksToday(BuildContext context) {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 24),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text(
-            'Pending Tasks for ${DateFormat('MMM d, y').format(now)}',
+          const SizedBox(height: 4),
+          Text(
+            userData!["name"] ?? 'User',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: Colors.indigo.shade800,
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Text(
-            'Showing tasks between ${DateFormat('h:mm a').format(startOfDay)} and ${DateFormat('h:mm a').format(endOfDay)}',
+          const SizedBox(height: 8),
+          Text(
+            DateFormat('EEEE, MMMM d').format(DateTime.now()),
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTasksSection(
+    BuildContext context,
+    String title,
+    List<Task> tasks, {
+    required String emptyMessage,
+    bool isCompleted = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Colors.indigo.shade800,
           ),
         ),
-        const SizedBox(height: 16),
-        _tasks.isEmpty
-            ? Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Center(
-                  child: Text(
-                    'No pending tasks for today',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                  ),
-                ),
-              )
+        const SizedBox(height: 12),
+        _isLoadingTasks
+            ? _buildLoadingIndicator()
+            : tasks.isEmpty
+            ? _buildEmptyState(emptyMessage)
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _tasks.length,
-                itemBuilder: (context, index) {
-                  final task = _tasks[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.1),
-                          spreadRadius: 1,
-                          blurRadius: 3,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      leading: Transform.scale(
-                        scale: 1.3,
-                        child: Checkbox(
-                          value: task.isCompleted,
-                          onChanged: (value) =>
-                              _toggleTaskCompletion(task, value!),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          activeColor: Colors.indigo.shade400,
-                        ),
-                      ),
-                      title: Text(
-                        task.title,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          decoration: task.isCompleted
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: task.isCompleted
-                              ? Colors.grey
-                              : Colors.grey[800],
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.access_time,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                DateFormat(
-                                  'MMM d, h:mm a',
-                                ).format(task.dueDate.toLocal()),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: Colors.grey[600]),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.flag,
-                                size: 16,
-                                color: _getPriorityColor(task.priority),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Priority: ${task.priority}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: _getPriorityColor(task.priority),
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                itemCount: tasks.length,
+                itemBuilder: (context, index) => _buildTaskCard(tasks[index]),
               ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(
+        child: SizedBox(
+          height: 24,
+          width: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          message,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(Task task) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        leading: Transform.scale(
+          scale: 1.3,
+          child: Checkbox(
+            value: task.isCompleted,
+            onChanged: (value) => _toggleTaskCompletion(task, value!),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+            ),
+            activeColor: Colors.indigo.shade400,
+          ),
+        ),
+        title: Text(
+          task.title,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: task.isCompleted ? Colors.grey : Colors.indigo.shade300,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTaskDetailRow(
+                Icons.access_time,
+                DateFormat('h:mm a').format(task.dueDate),
+                Colors.grey[800]!,
+              ),
+              const SizedBox(height: 4),
+              _buildTaskDetailRow(
+                Icons.flag,
+                'Priority: ${task.priority}',
+                _getPriorityColor(task.priority),
+              ),
+              if (task.recurrence != 'none') ...[
+                const SizedBox(height: 4),
+                _buildTaskDetailRow(
+                  Icons.repeat,
+                  'Repeats ${task.recurrence}',
+                  Colors.indigo.shade400,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskDetailRow(IconData icon, String text, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+        ),
       ],
     );
   }
