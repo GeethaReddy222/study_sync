@@ -5,7 +5,9 @@ import 'package:study_sync/screens/home_screen.dart';
 import 'package:study_sync/screens/settings_screen.dart';
 
 class MenuList extends StatefulWidget {
-  const MenuList({super.key});
+  final Map<String, dynamic> userData;
+
+  const MenuList({super.key, required this.userData});
 
   @override
   State<MenuList> createState() => _MenuListState();
@@ -48,7 +50,13 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.settings_rounded,
           title: 'Settings',
           index: 3,
-          onTap: () => _navigateTo(context, const SettingsScreen()),
+          onTap: () => _navigateTo(
+            context,
+            SettingsScreen(
+              currentName: widget.userData['name'] ?? 'User',
+              currentEmail: widget.userData['email'] ?? '',
+            ),
+          ),
         ),
       ],
     );
@@ -98,7 +106,9 @@ class _MenuListState extends State<MenuList> {
                     color: isSelected
                         ? theme.primaryColor
                         : theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                 ),
                 const Spacer(),
@@ -120,7 +130,7 @@ class _MenuListState extends State<MenuList> {
   }
 
   void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.of(context).pop(); // Close drawer
+    Navigator.of(context).pop();
     Navigator.push(
       context,
       PageRouteBuilder(
@@ -129,11 +139,12 @@ class _MenuListState extends State<MenuList> {
           const begin = Offset(1.0, 0.0);
           const end = Offset.zero;
           const curve = Curves.easeInOut;
-          
-          var tween = Tween(begin: begin, end: end).chain(
-            CurveTween(curve: curve),
-          );
-          
+
+          var tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
+
           return SlideTransition(
             position: animation.drive(tween),
             child: child,

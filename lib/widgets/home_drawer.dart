@@ -22,13 +22,17 @@ class _HomeDrawerState extends State<HomeDrawer> {
   }
 
   Future<void> _loadUserData() async {
-    if (user == null) return;
-    
+    if (user == null) {
+      if (mounted) setState(() => isLoading = false);
+      return;
+    }
+
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .get();
+
       if (mounted) {
         setState(() {
           userData = doc.data();
@@ -53,7 +57,19 @@ class _HomeDrawerState extends State<HomeDrawer> {
       child: Column(
         children: [
           _buildUserHeader(context),
-          const Expanded(child: MenuList()),
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : MenuList(
+                    userData:
+                        userData ??
+                        {
+                          'name': user?.displayName ?? 'User',
+                          'email': user?.email ?? '',
+                          'photoURL': user?.photoURL ?? '',
+                        },
+                  ),
+          ),
         ],
       ),
     );
@@ -65,9 +81,7 @@ class _HomeDrawerState extends State<HomeDrawer> {
       padding: const EdgeInsets.only(top: 40, bottom: 20, left: 20, right: 20),
       decoration: BoxDecoration(
         color: Theme.of(context).primaryColor,
-        borderRadius: const BorderRadius.only(
-          bottomRight: Radius.circular(20),
-        ),
+        borderRadius: const BorderRadius.only(bottomRight: Radius.circular(20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,26 +89,22 @@ class _HomeDrawerState extends State<HomeDrawer> {
           CircleAvatar(
             radius: 30,
             backgroundColor: Colors.white.withOpacity(0.2),
-            child: Icon(
-              Icons.person,
-              size: 30,
-              color: Colors.white,
-            ),
+            child: Icon(Icons.person, size: 30, color: Colors.white),
           ),
           const SizedBox(height: 16),
           Text(
-            user?.displayName ?? 'StudySync User',
+            userData?['name'] ?? user?.displayName ?? 'StudySync User',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            user?.email ?? 'user@example.com',
+            userData?['email'] ?? user?.email ?? 'user@example.com',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.white.withOpacity(0.8),
-                ),
+              color: Colors.white.withOpacity(0.8),
+            ),
           ),
           if (isLoading)
             const Padding(
