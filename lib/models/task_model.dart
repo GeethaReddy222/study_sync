@@ -8,11 +8,11 @@ class Task {
   final String priority;
   final String category;
   final String repeatOption;
-  final bool completed;
+  final bool isCompleted;
   final Timestamp createdAt;
-  final String? repeatDay; // For weekly/bi-weekly tasks
-  final int? repeatCount; // For custom repeats
-  final String? repeatUnit; // 'days', 'weeks', 'months'
+  final String? repeatDay;
+  final int? repeatCount;
+  final String? repeatUnit;
 
   Task({
     this.id,
@@ -22,16 +22,16 @@ class Task {
     required this.priority,
     required this.category,
     required this.repeatOption,
-    this.completed = false,
+    this.isCompleted = false,
     Timestamp? createdAt,
     this.repeatDay,
     this.repeatCount,
     this.repeatUnit,
   }) : createdAt = createdAt ?? Timestamp.now();
 
-  //convert Firestore to Dart Object
   factory Task.fromFireStore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+
     return Task(
       id: doc.id,
       title: data['title'] ?? '',
@@ -40,7 +40,7 @@ class Task {
       priority: data['priority'] ?? 'Medium',
       category: data['category'] ?? 'Other',
       repeatOption: data['repeatOption'] ?? 'Does not repeat',
-      completed: data['completed'] ?? false,
+      isCompleted: data['isCompleted'] ?? false,
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       repeatDay: data['repeatDay'],
       repeatCount: data['repeatCount'],
@@ -48,7 +48,6 @@ class Task {
     );
   }
 
-  // Convert Task object to Firestore Map
   Map<String, dynamic> toFireStore() {
     return {
       'title': title,
@@ -56,8 +55,9 @@ class Task {
       'dueDate': Timestamp.fromDate(dueDate),
       'priority': priority,
       'category': category,
-      'completed': completed,
+      'isCompleted': isCompleted,
       'createdAt': createdAt,
+      'repeatOption': repeatOption,
       if (repeatDay != null) 'repeatDay': repeatDay,
       if (repeatCount != null) 'repeatCount': repeatCount,
       if (repeatUnit != null) 'repeatUnit': repeatUnit,

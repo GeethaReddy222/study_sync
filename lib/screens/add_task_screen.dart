@@ -97,18 +97,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
-
+      final dueDateTime = DateTime(
+        _dueDate!.year,
+        _dueDate!.month,
+        _dueDate!.day,
+        _dueTime!.hour,
+        _dueTime!.minute,
+      );
+      final utcDueDate = dueDateTime.toUtc();
       // Create Task object
       final newTask = Task(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        dueDate: DateTime(
-          _dueDate!.year,
-          _dueDate!.month,
-          _dueDate!.day,
-          _dueTime!.hour,
-          _dueTime!.minute,
-        ),
+        dueDate: utcDueDate,
         priority: _priority!,
         category: _category!,
         repeatOption: _repeatOption,

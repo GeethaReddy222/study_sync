@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:study_sync/screens/auth/login_screen.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
+import 'package:study_sync/screens/main_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -20,7 +21,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Study Sync',
       theme: _studySyncTheme,
-      home: const HomeScreen(),
+      home: const MainScreen(),
       routes: {
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
