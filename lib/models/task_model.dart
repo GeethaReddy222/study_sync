@@ -15,6 +15,8 @@ class Task {
   final DateTime originalDueDate;
   final bool isCompleted;
   final DateTime createdAt;
+  final bool isRecurring;
+  final DateTime? lastRecurrenceDate;
 
   Task({
     required this.id,
@@ -31,18 +33,27 @@ class Task {
     required this.originalDueDate,
     this.isCompleted = false,
     required this.createdAt,
+    this.isRecurring = false,
+    this.lastRecurrenceDate,
   });
 
   factory Task.fromFireStore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
-    
+
     DateTime parseTimestamp(Timestamp? timestamp, DateTime fallback) =>
         timestamp?.toDate() ?? fallback;
 
     final now = DateTime.now();
     final dueDate = parseTimestamp(data['dueDate'] as Timestamp?, now);
-    final originalDueDate = parseTimestamp(data['originalDueDate'] as Timestamp?, dueDate);
+    final originalDueDate = parseTimestamp(
+      data['originalDueDate'] as Timestamp?,
+      dueDate,
+    );
     final createdAt = parseTimestamp(data['createdAt'] as Timestamp?, now);
+    final lastRecurrenceDate = parseTimestamp(
+      data['lastRecurrenceDate'] as Timestamp?,
+      dueDate,
+    );
 
     return Task(
       id: doc.id,
@@ -59,6 +70,8 @@ class Task {
       originalDueDate: originalDueDate,
       isCompleted: data['isCompleted'] as bool? ?? false,
       createdAt: createdAt,
+      isRecurring: data['isRecurring'] as bool? ?? false,
+      lastRecurrenceDate: lastRecurrenceDate,
     );
   }
 
@@ -77,6 +90,47 @@ class Task {
       if (repeatUnit != null) 'repeatUnit': repeatUnit,
       'recurrence': recurrence,
       'originalDueDate': Timestamp.fromDate(originalDueDate),
+      'isRecurring': isRecurring,
+      if (lastRecurrenceDate != null)
+        'lastRecurrenceDate': Timestamp.fromDate(lastRecurrenceDate!),
     };
+  }
+
+  Task copyWith({
+    String? id,
+    String? title,
+    String? description,
+    DateTime? dueDate,
+    String? priority,
+    String? category,
+    String? repeatOption,
+    String? repeatDay,
+    int? repeatCount,
+    String? repeatUnit,
+    String? recurrence,
+    DateTime? originalDueDate,
+    bool? isCompleted,
+    DateTime? createdAt,
+    bool? isRecurring,
+    DateTime? lastRecurrenceDate,
+  }) {
+    return Task(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      dueDate: dueDate ?? this.dueDate,
+      priority: priority ?? this.priority,
+      category: category ?? this.category,
+      repeatOption: repeatOption ?? this.repeatOption,
+      repeatDay: repeatDay ?? this.repeatDay,
+      repeatCount: repeatCount ?? this.repeatCount,
+      repeatUnit: repeatUnit ?? this.repeatUnit,
+      recurrence: recurrence ?? this.recurrence,
+      originalDueDate: originalDueDate ?? this.originalDueDate,
+      isCompleted: isCompleted ?? this.isCompleted,
+      createdAt: createdAt ?? this.createdAt,
+      isRecurring: isRecurring ?? this.isRecurring,
+      lastRecurrenceDate: lastRecurrenceDate ?? this.lastRecurrenceDate,
+    );
   }
 }

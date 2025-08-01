@@ -98,51 +98,36 @@ class _HomeScreenState extends State<HomeScreen> {
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    // Convert to UTC for query (account for IST offset)
-    final queryStart = DateTime.utc(
-      startOfDay.year,
-      startOfDay.month,
-      startOfDay.day - 1,
-      18,
-      30,
-      0,
-    );
-
-    final queryEnd = DateTime.utc(
-      endOfDay.year,
-      endOfDay.month,
-      endOfDay.day,
-      18,
-      29,
-      59,
-    );
-
     try {
+      // Get all tasks matching the completion status
       final query = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .collection('tasks')
-          .where(
-            'dueDate',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(queryStart),
-          )
-          .where('dueDate', isLessThanOrEqualTo: Timestamp.fromDate(queryEnd))
           .where('isCompleted', isEqualTo: completed)
           .get();
 
-      return query.docs
+      // Convert to Task objects, filter, and sort
+      final tasks = query.docs
           .map((doc) {
             try {
               final task = Task.fromFireStore(doc);
-              final localDue = task.dueDate;
-              return localDue.isAfter(
-                        startOfDay.subtract(const Duration(seconds: 1)),
-                      ) &&
-                      localDue.isBefore(
-                        endOfDay.add(const Duration(seconds: 1)),
-                      )
-                  ? task
-                  : null;
+              final localDue = task.dueDate.toLocal(); // Convert to local time
+
+              // Check if this task is due today
+              final isDueToday =
+                  localDue.isAfter(
+                    startOfDay.subtract(const Duration(seconds: 1)),
+                  ) &&
+                  localDue.isBefore(endOfDay.add(const Duration(seconds: 1)));
+
+              // For pending tasks, check if it's a recurring task that should appear today
+              final isRecurringToday =
+                  !completed &&
+                  task.isRecurring &&
+                  _shouldRecurToday(task, now);
+
+              return (isDueToday || isRecurringToday) ? task : null;
             } catch (e) {
               debugPrint('Error parsing task ${doc.id}: $e');
               return null;
@@ -151,15 +136,43 @@ class _HomeScreenState extends State<HomeScreen> {
           .where((task) => task != null)
           .cast<Task>()
           .toList();
+
+      // Sort by local time in ascending order
+      tasks.sort((a, b) {
+        final aLocal = a.dueDate.toLocal();
+        final bLocal = b.dueDate.toLocal();
+        return aLocal.compareTo(bLocal);
+      });
+
+      return tasks;
     } catch (e) {
       debugPrint('Error fetching tasks: $e');
-      if (e is FirebaseException && e.code == 'failed-precondition') {
-        debugPrint('Create composite index for isCompleted and dueDate');
-        if (mounted) {
-          _showSnackBar('Database index missing - please try again later');
-        }
-      }
       return [];
+    }
+  }
+
+  bool _shouldRecurToday(Task task, DateTime now) {
+    if (!task.isRecurring) return false;
+
+    final today = DateTime(now.year, now.month, now.day);
+    final originalDueDate = task.originalDueDate;
+    final lastRecurrenceDate = task.lastRecurrenceDate ?? originalDueDate;
+
+    switch (task.recurrence) {
+      case 'daily':
+        return today.isAfter(lastRecurrenceDate);
+      case 'weekly':
+        return now.weekday == originalDueDate.weekday &&
+            today.difference(lastRecurrenceDate).inDays >= 7;
+      case 'biweekly':
+        return now.weekday == originalDueDate.weekday &&
+            today.difference(lastRecurrenceDate).inDays >= 14;
+      case 'monthly':
+        return now.day == originalDueDate.day &&
+            (now.month > lastRecurrenceDate.month ||
+                now.year > lastRecurrenceDate.year);
+      default:
+        return false;
     }
   }
 
@@ -176,31 +189,53 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _createNextRecurrence(Task task) async {
+    final now = DateTime.now();
     DateTime nextDate;
 
     switch (task.recurrence) {
       case 'daily':
-        nextDate = task.originalDueDate.add(const Duration(days: 1));
+        nextDate = DateTime(
+          now.year,
+          now.month,
+          now.day + 1,
+          task.dueDate.hour,
+          task.dueDate.minute,
+        );
         break;
       case 'weekly':
-        nextDate = task.originalDueDate.add(const Duration(days: 7));
+        nextDate = DateTime(
+          now.year,
+          now.month,
+          now.day + 7,
+          task.dueDate.hour,
+          task.dueDate.minute,
+        );
         break;
       case 'biweekly':
-        nextDate = task.originalDueDate.add(const Duration(days: 14));
+        nextDate = DateTime(
+          now.year,
+          now.month,
+          now.day + 14,
+          task.dueDate.hour,
+          task.dueDate.minute,
+        );
         break;
       case 'monthly':
+        // Handle month overflow
+        final nextMonth = now.month + 1;
+        final nextYear = nextMonth > 12 ? now.year + 1 : now.year;
+        final adjustedMonth = nextMonth > 12 ? 1 : nextMonth;
+
+        // Ensure day doesn't exceed max days in month
+        final maxDay = DateUtils.getDaysInMonth(nextYear, adjustedMonth);
+        final day = min(task.originalDueDate.day, maxDay);
+
         nextDate = DateTime(
-          task.originalDueDate.year,
-          task.originalDueDate.month + 1,
-          min(
-            task.originalDueDate.day,
-            DateUtils.getDaysInMonth(
-              task.originalDueDate.year,
-              task.originalDueDate.month + 1,
-            ),
-          ),
-          task.originalDueDate.hour,
-          task.originalDueDate.minute,
+          nextYear,
+          adjustedMonth,
+          day,
+          task.dueDate.hour,
+          task.dueDate.minute,
         );
         break;
       default:
@@ -219,8 +254,10 @@ class _HomeScreenState extends State<HomeScreen> {
           'category': task.category,
           'isCompleted': false,
           'recurrence': task.recurrence,
-          'originalDueDate': Timestamp.fromDate(nextDate),
-          'createdAt': Timestamp.fromDate(DateTime.now()),
+          'originalDueDate': Timestamp.fromDate(task.originalDueDate),
+          'createdAt': Timestamp.fromDate(now),
+          'isRecurring': true,
+          'lastRecurrenceDate': Timestamp.fromDate(now),
         });
   }
 
@@ -230,7 +267,11 @@ class _HomeScreenState extends State<HomeScreen> {
         .doc(user!.uid)
         .collection("tasks")
         .doc(task.id)
-        .update({'isCompleted': completed});
+        .update({
+          'isCompleted': completed,
+          if (completed)
+            'lastRecurrenceDate': Timestamp.fromDate(DateTime.now()),
+        });
   }
 
   void _showSnackBar(String message) {

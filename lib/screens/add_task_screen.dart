@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:study_sync/models/task_model.dart';
+import 'package:study_sync/services/task_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
   const AddTaskScreen({super.key});
@@ -28,6 +29,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _showTimeError = false;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final User? user = FirebaseAuth.instance.currentUser!;
   final List<String> _units = ['days', 'weeks', 'months'];
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -81,28 +83,26 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _category == null ||
         _dueDate == null ||
         _dueTime == null) {
+      debugPrint('❌ FORM VALIDATION FAILED');
       return;
     }
 
     if (!_validateTimeForToday()) {
+      debugPrint('❌ INVALID TIME SELECTED FOR TODAY');
       _showTimeValidationError();
       return;
-    }
-
-    // Adjust date for weekly/bi-weekly repeats
-    if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
-        _selectedWeekday != null) {
-      _dueDate = _calculateNextWeeklyDate();
-      await _showRepeatConfirmationDialog();
     }
 
     setState(() => _isSubmitting = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in');
+      // Handle weekly/bi-weekly repeats first
+      if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
+          _selectedWeekday != null) {
+        _dueDate = _calculateNextWeeklyDate();
+      }
 
-      // Combine date and time
+      // Create the final dueDateTime
       final dueDateTime = DateTime(
         _dueDate!.year,
         _dueDate!.month,
@@ -111,20 +111,58 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _dueTime!.minute,
       );
 
+      // Check for time conflict
+      if (await _hasTimeConflict(dueDateTime)) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Time Conflict'),
+              content: const Text(
+                'You already have a task scheduled at this time.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show repeat confirmation only after checking for conflicts
+
+      if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
+          _selectedWeekday != null) {
+        final bool shouldContinue = await _showRepeatConfirmationDialog();
+        if (!shouldContinue) {
+          setState(() => _isSubmitting = false);
+          return;
+        }
+      }
+
       // Determine recurrence type based on repeat option
       String recurrence;
+      bool isRecurring = false;
       switch (_repeatOption) {
         case 'Daily':
           recurrence = 'daily';
+          isRecurring = true;
           break;
         case 'Weekly':
           recurrence = 'weekly';
+          isRecurring = true;
           break;
         case 'Bi-Weekly':
           recurrence = 'biweekly';
+          isRecurring = true;
           break;
         case 'Monthly':
           recurrence = 'monthly';
+          isRecurring = true;
           break;
         default:
           recurrence = 'none';
@@ -146,20 +184,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         originalDueDate: dueDateTime,
         isCompleted: false,
         createdAt: DateTime.now(),
+        isRecurring: isRecurring,
       );
 
-      // Add task to Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('tasks')
-          .doc(newTask.id)
-          .set(newTask.toFireStore());
+      // Add task using TaskService
+      await TaskService().addTask(newTask);
 
       if (mounted) {
+        debugPrint('✅ TASK ADDED SUCCESSFULLY');
         _showSuccessDialog();
       }
     } catch (e) {
+      debugPrint('❌ ERROR ADDING TASK: $e');
       if (mounted) {
         _showErrorDialog(e.toString());
       }
@@ -167,6 +203,72 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       if (mounted) {
         setState(() => _isSubmitting = false);
       }
+    }
+  }
+
+  Future<bool> _showRepeatConfirmationDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirm Recurring Task'),
+            content: Text(
+              'Task will repeat $_repeatOption on $_selectedWeekday',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<bool> _hasTimeConflict(DateTime newTime) async {
+    if (user == null) return false;
+
+    // Define your buffer period (e.g., 30 minutes)
+    const buffer = Duration(minutes: 30);
+
+    // precise range for comparison
+    final startRange = newTime.subtract(buffer);
+    final endRange = newTime.add(buffer);
+
+    debugPrint('Checking conflict for time: ${newTime.toLocal()}');
+    debugPrint(
+      'Searching between: ${startRange.toLocal()} and ${endRange.toLocal()}',
+    );
+
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('tasks')
+          .where(
+            'dueDate',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startRange),
+          )
+          .where('dueDate', isLessThanOrEqualTo: Timestamp.fromDate(endRange))
+          .where('isCompleted', isEqualTo: false)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        debugPrint('Found conflicting tasks:');
+        for (final doc in query.docs) {
+          final task = Task.fromFireStore(doc);
+          debugPrint(' - ${task.title} @ ${task.dueDate.toLocal()}');
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error checking time conflict: $e');
+      return false;
     }
   }
 
@@ -209,22 +311,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
   }
 
-  Future<void> _showRepeatConfirmationDialog() async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Repeat Task'),
-        content: Text('Task will repeat $_repeatOption on $_selectedWeekday'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showSuccessDialog() {
     showDialog(
       context: context,
@@ -235,7 +321,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context, true); // Return success flag
+              Navigator.pop(context, true);
             },
             child: const Text('OK'),
           ),
@@ -321,7 +407,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Task Title',
                     prefixIcon: const Icon(Icons.title),
-                    errorText: _showTitleError ? 'Please enter a task title' : null,
+                    errorText: _showTitleError
+                        ? 'Please enter a task title'
+                        : null,
                   ),
                   onChanged: (value) => setState(() {
                     if (value.isNotEmpty) _showTitleError = false;
@@ -367,7 +455,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           decoration: InputDecoration(
                             labelText: 'Due Date',
                             prefixIcon: const Icon(Icons.calendar_today),
-                            errorText: _showDateError ? 'Please select a date' : null,
+                            errorText: _showDateError
+                                ? 'Please select a date'
+                                : null,
                           ),
                           child: Text(
                             _dueDate == null
@@ -385,7 +475,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           decoration: InputDecoration(
                             labelText: 'Due Time',
                             prefixIcon: const Icon(Icons.access_time),
-                            errorText: _showTimeError ? 'Please select a time' : null,
+                            errorText: _showTimeError
+                                ? 'Please select a time'
+                                : null,
                           ),
                           child: Text(
                             _dueTime == null
@@ -431,7 +523,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     _repeatOption == 'Bi-Weekly') ...[
                   const SizedBox(height: 20),
                   DropdownButtonFormField<String>(
-                    value: _selectedWeekday ?? _weekdays[DateTime.now().weekday % 7],
+                    value:
+                        _selectedWeekday ??
+                        _weekdays[DateTime.now().weekday % 7],
                     decoration: const InputDecoration(
                       labelText: 'Repeat on',
                       prefixIcon: Icon(Icons.calendar_view_day),
@@ -511,7 +605,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Priority',
                     prefixIcon: const Icon(Icons.priority_high),
-                    errorText: _showPriorityError ? 'Please select a priority' : null,
+                    errorText: _showPriorityError
+                        ? 'Please select a priority'
+                        : null,
                   ),
                   items: _priorities.map((priority) {
                     return DropdownMenuItem<String>(
@@ -530,7 +626,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Category',
                     prefixIcon: const Icon(Icons.category),
-                    errorText: _showCategoryError ? 'Please select a category' : null,
+                    errorText: _showCategoryError
+                        ? 'Please select a category'
+                        : null,
                   ),
                   items: _categories.map((category) {
                     return DropdownMenuItem<String>(
