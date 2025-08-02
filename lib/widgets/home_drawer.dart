@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/widgets/menu_list.dart';
 
 class HomeDrawer extends StatefulWidget {
@@ -11,37 +12,34 @@ class HomeDrawer extends StatefulWidget {
 }
 
 class _HomeDrawerState extends State<HomeDrawer> {
-  final User? user = FirebaseAuth.instance.currentUser;
-  Map<String, dynamic>? userData;
-  bool isLoading = true;
+  final User? _user = FirebaseAuth.instance.currentUser;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+   
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserData();
+    });
   }
 
   Future<void> _loadUserData() async {
-    if (user == null) {
-      if (mounted) setState(() => isLoading = false);
+    if (_user == null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
       return;
     }
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .get();
-
-      if (mounted) {
-        setState(() {
-          userData = doc.data();
-          isLoading = false;
-        });
-      }
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      await userProvider.loadUserData(_user);
     } catch (e) {
+      debugPrint('Error loading user data: $e');
+    } finally {
       if (mounted) {
-        setState(() => isLoading = false);
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -57,34 +55,24 @@ class _HomeDrawerState extends State<HomeDrawer> {
       child: Column(
         children: [
           _buildUserHeader(context),
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : MenuList(
-                    userData:
-                        userData ??
-                        {
-                          'name': user?.displayName ?? 'User',
-                          'email': user?.email ?? '',
-                          'photoURL': user?.photoURL ?? '',
-                        },
-                  ),
-          ),
+          const Expanded(child: MenuList()),
         ],
       ),
     );
   }
 
   Widget _buildUserHeader(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+
     return Container(
-      width: 400,
+      
       padding: const EdgeInsets.only(top: 40, bottom: 20, left: 20, right: 20),
       decoration: BoxDecoration(
         color: Theme.of(context).primaryColor,
         borderRadius: const BorderRadius.only(bottomRight: Radius.circular(20)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
             radius: 30,
@@ -92,21 +80,29 @@ class _HomeDrawerState extends State<HomeDrawer> {
             child: Icon(Icons.person, size: 30, color: Colors.white),
           ),
           const SizedBox(height: 16),
-          Text(
-            userData?['name'] ?? user?.displayName ?? 'StudySync User',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          _isLoading
+              ? _buildShimmerText()
+              : Text(
+                  userProvider.name.isNotEmpty
+                      ? userProvider.name
+                      : _user?.displayName ?? 'StudySync User',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
           const SizedBox(height: 4),
-          Text(
-            userData?['email'] ?? user?.email ?? 'user@example.com',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.white.withOpacity(0.8),
-            ),
-          ),
-          if (isLoading)
+          _isLoading
+              ? _buildShimmerText(width: 150)
+              : Text(
+                  userProvider.email.isNotEmpty
+                      ? userProvider.email
+                      : _user?.email ?? 'user@example.com',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                ),
+          if (_isLoading)
             const Padding(
               padding: EdgeInsets.only(top: 8.0),
               child: LinearProgressIndicator(
@@ -116,6 +112,18 @@ class _HomeDrawerState extends State<HomeDrawer> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildShimmerText({double width = 200}) {
+    return Container(
+      height: 24,
+      width: width,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 4),
     );
   }
 }

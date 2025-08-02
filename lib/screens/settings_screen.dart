@@ -2,16 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:study_sync/providers/user_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
-  final String currentName;
-  final String currentEmail;
-
-  const SettingsScreen({
-    super.key,
-    required this.currentName,
-    required this.currentEmail,
-  });
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -26,8 +21,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.currentName);
-    _emailController = TextEditingController(text: widget.currentEmail);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    _nameController = TextEditingController(text: userProvider.name);
+    _emailController = TextEditingController(text: userProvider.email);
   }
 
   @override
@@ -43,21 +39,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _isUpdating = true);
 
     try {
-      final User? user = FirebaseAuth.instance.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
 
-      // First update Firestore
-      await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user.uid)
-          .update({
-            'name': _nameController.text.trim(),
-            'email': _emailController.text.trim(),
-          });
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final newName = _nameController.text.trim();
+      final newEmail = _emailController.text.trim();
 
-      // Then handle email verification if changed
-      if (_emailController.text.trim() != user.email) {
-        await user.verifyBeforeUpdateEmail(_emailController.text.trim());
+      // Update Firestore
+      await FirebaseFirestore.instance.collection("users").doc(user.uid).update(
+        {'name': newName, 'email': newEmail},
+      );
+
+      userProvider.updateUser(newName, newEmail);
+
+      // email verification if changed
+      if (newEmail != user.email) {
+        await user.verifyBeforeUpdateEmail(newEmail);
         if (mounted) {
           _showVerificationSentDialog();
           return;
@@ -94,9 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('OK'),
           ),
         ],
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -109,18 +105,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.check_circle,
-              color: Colors.indigo.shade300,
-              size: 48,
-            ),
+            Icon(Icons.check_circle, color: Colors.indigo.shade300, size: 48),
             const SizedBox(height: 14),
             const Text(
               'Profile updated!',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -133,9 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('OK'),
           ),
         ],
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -226,6 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextFormField(
                   controller: _nameController,
                   style: theme.textTheme.bodyLarge,
+                  keyboardType: TextInputType.text,
                   decoration: InputDecoration(
                     labelText: 'Name',
                     labelStyle: theme.textTheme.bodyMedium?.copyWith(

@@ -1,10 +1,11 @@
 import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:study_sync/models/task_model.dart';
+import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/dairy_screen.dart';
 import 'package:study_sync/screens/progress_screen.dart';
@@ -19,8 +20,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final User? user = FirebaseAuth.instance.currentUser;
-  bool isLoading = true;
-  Map<String, dynamic>? userData;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentIndex = 0;
   List<Task> _tasks = [];
@@ -30,46 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    await _getUser();
-    await _loadTasks();
-  }
-
-  Future<void> _getUser() async {
-    if (user == null) {
-      if (mounted) setState(() => isLoading = false);
-      return;
-    }
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user!.uid)
-          .get();
-
-      if (doc.exists) {
-        if (mounted) {
-          setState(() {
-            userData = doc.data();
-            isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => isLoading = false);
-        debugPrint('User document does not exist');
-      }
-    } catch (e) {
-      if (mounted) setState(() => isLoading = false);
-      debugPrint('Error fetching user data: $e');
-      if (mounted) _showSnackBar('Failed to load user data');
-    }
+    _loadTasks();
   }
 
   Future<void> _loadTasks() async {
-    if (!mounted) return;
+    if (!mounted || user == null) return;
     setState(() => _isLoadingTasks = true);
 
     try {
@@ -99,7 +63,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     try {
-      // Get all tasks matching the completion status
       final query = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
@@ -107,21 +70,16 @@ class _HomeScreenState extends State<HomeScreen> {
           .where('isCompleted', isEqualTo: completed)
           .get();
 
-      // Convert to Task objects, filter, and sort
       final tasks = query.docs
           .map((doc) {
             try {
               final task = Task.fromFireStore(doc);
-              final localDue = task.dueDate.toLocal(); // Convert to local time
-
-              // Check if this task is due today
+              final localDue = task.dueDate.toLocal();
               final isDueToday =
                   localDue.isAfter(
                     startOfDay.subtract(const Duration(seconds: 1)),
                   ) &&
                   localDue.isBefore(endOfDay.add(const Duration(seconds: 1)));
-
-              // For pending tasks, check if it's a recurring task that should appear today
               final isRecurringToday =
                   !completed &&
                   task.isRecurring &&
@@ -137,13 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .cast<Task>()
           .toList();
 
-      // Sort by local time in ascending order
-      tasks.sort((a, b) {
-        final aLocal = a.dueDate.toLocal();
-        final bLocal = b.dueDate.toLocal();
-        return aLocal.compareTo(bLocal);
-      });
-
+      tasks.sort((a, b) => a.dueDate.toLocal().compareTo(b.dueDate.toLocal()));
       return tasks;
     } catch (e) {
       debugPrint('Error fetching tasks: $e');
@@ -221,12 +173,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
       case 'monthly':
-        // Handle month overflow
         final nextMonth = now.month + 1;
         final nextYear = nextMonth > 12 ? now.year + 1 : now.year;
         final adjustedMonth = nextMonth > 12 ? 1 : nextMonth;
-
-        // Ensure day doesn't exceed max days in month
         final maxDay = DateUtils.getDaysInMonth(nextYear, adjustedMonth);
         final day = min(task.originalDueDate.day, maxDay);
 
@@ -287,6 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
@@ -321,13 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
             colors: [Colors.indigo.shade50, Colors.grey.shade50],
           ),
         ),
-        child: SafeArea(
-          child: isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : userData == null
-              ? const Center(child: Text('User data not available'))
-              : _getCurrentPage(),
-        ),
+        child: SafeArea(child: _getCurrentPage(userProvider)),
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.indigo,
@@ -404,26 +349,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _getCurrentPage() {
+  Widget _getCurrentPage(UserProvider userProvider) {
     switch (_currentIndex) {
       case 0:
-        return _buildHomeContent();
+        return _buildHomeContent(userProvider);
       case 1:
         return const ProgressScreen();
       case 2:
         return const DairyScreen();
       default:
-        return _buildHomeContent();
+        return _buildHomeContent(userProvider);
     }
   }
 
-  Widget _buildHomeContent() {
+  Widget _buildHomeContent(UserProvider userProvider) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildWelcomeSection(context),
+          _buildWelcomeSection(context, userProvider),
           const SizedBox(height: 24),
           _buildTasksSection(
             context,
@@ -444,7 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWelcomeSection(BuildContext context) {
+  Widget _buildWelcomeSection(BuildContext context, UserProvider userProvider) {
     return Center(
       child: Column(
         children: [
@@ -457,7 +402,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            userData!["name"] ?? 'User',
+            userProvider.name.isNotEmpty ? userProvider.name : 'User',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: Colors.indigo.shade800,

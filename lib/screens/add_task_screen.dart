@@ -99,7 +99,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       // Handle weekly/bi-weekly repeats first
       if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
           _selectedWeekday != null) {
-        _dueDate = _calculateNextWeeklyDate();
+        // Only adjust date if it's not today's weekday or time has passed
+        final today = DateTime.now();
+        if (!DateUtils.isSameDay(_dueDate!, today)) {
+          _dueDate = _calculateNextWeeklyDate();
+        }
       }
 
       // Create the final dueDateTime
@@ -245,6 +249,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
 
     try {
+      // First check non-recurring tasks and original dates of recurring tasks
       final query = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
@@ -265,11 +270,70 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
         return true;
       }
+
+      // Now check for potential conflicts with recurring tasks
+      final recurringQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('tasks')
+          .where('isRecurring', isEqualTo: true)
+          .where('isCompleted', isEqualTo: false)
+          .get();
+
+      for (final doc in recurringQuery.docs) {
+        final task = Task.fromFireStore(doc);
+
+        // Calculate next occurrence
+        DateTime? nextOccurrence = _getNextRecurrence(task);
+
+        // Check if next occurrence conflicts with new time
+        if (nextOccurrence != null &&
+            nextOccurrence.isAfter(startRange) &&
+            nextOccurrence.isBefore(endRange)) {
+          debugPrint('Found conflict with recurring task:');
+          debugPrint(' - ${task.title} @ ${nextOccurrence.toLocal()}');
+          return true;
+        }
+      }
+
       return false;
     } catch (e) {
       debugPrint('Error checking time conflict: $e');
       return false;
     }
+  }
+
+  DateTime? _getNextRecurrence(Task task) {
+    final now = DateTime.now();
+    DateTime nextDate = task.originalDueDate;
+
+    switch (task.recurrence) {
+      case 'daily':
+        while (nextDate.isBefore(now)) {
+          nextDate = nextDate.add(const Duration(days: 1));
+        }
+        break;
+      case 'weekly':
+        while (nextDate.isBefore(now)) {
+          nextDate = nextDate.add(const Duration(days: 7));
+        }
+        break;
+      case 'biweekly':
+        while (nextDate.isBefore(now)) {
+          nextDate = nextDate.add(const Duration(days: 14));
+        }
+        break;
+      case 'monthly':
+        while (nextDate.isBefore(now)) {
+          // Add approximately 1 month
+          nextDate = DateTime(nextDate.year, nextDate.month + 1, nextDate.day);
+        }
+        break;
+      default:
+        return null;
+    }
+
+    return nextDate;
   }
 
   bool _validateTimeForToday() {
@@ -284,11 +348,27 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     return true;
   }
 
+  // Replace _calculateNextWeeklyDate() with this new version
   DateTime _calculateNextWeeklyDate() {
     final today = DateTime.now();
-    int currentIndex = today.weekday % 7;
-    int targetIndex = _weekdays.indexOf(_selectedWeekday!);
-    int daysUntilNext = (targetIndex - currentIndex + 7) % 7;
+    final currentWeekday = today.weekday % 7; // 0=Sunday, 6=Saturday
+    final targetIndex = _weekdays.indexOf(_selectedWeekday!);
+
+    // Check if today is the selected weekday
+    if (currentWeekday == targetIndex) {
+      // If time is still in the future, use today
+      if (_dueTime != null) {
+        final nowTime = TimeOfDay.now();
+        if (_dueTime!.hour > nowTime.hour ||
+            (_dueTime!.hour == nowTime.hour &&
+                _dueTime!.minute > nowTime.minute)) {
+          return today;
+        }
+      }
+    }
+
+    // Otherwise calculate next occurrence
+    int daysUntilNext = (targetIndex - currentWeekday + 7) % 7;
     daysUntilNext = daysUntilNext == 0 ? 7 : daysUntilNext;
     return today.add(
       Duration(days: daysUntilNext + (_repeatOption == 'Bi-Weekly' ? 7 : 0)),

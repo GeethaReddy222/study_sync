@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:study_sync/screens/auth/login_screen.dart';
-import 'package:study_sync/screens/auth/register_screen.dart';
+import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/main_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
-  
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(MyApp());
+
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => UserProvider())],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -22,10 +27,6 @@ class MyApp extends StatelessWidget {
       title: 'Study Sync',
       theme: _studySyncTheme,
       home: const MainScreen(),
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-      },
     );
   }
 

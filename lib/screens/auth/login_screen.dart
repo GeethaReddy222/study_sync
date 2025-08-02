@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:provider/provider.dart';
+import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/auth/register_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
 
@@ -47,10 +49,14 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+
+      await Provider.of<UserProvider>(context, listen: false)
+          .loadUserData(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -60,10 +66,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e);
-    } on TimeoutException {
-      _showSnackBar('Connection timed out. Please try again');
     } catch (e) {
-      _showSnackBar('An unexpected error occurred');
+      _showSnackBar('An error occurred during login');
       debugPrint('Login error: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -87,7 +91,12 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+
+      await Provider.of<UserProvider>(context, listen: false)
+          .loadUserData(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -157,8 +166,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   'Welcome Back',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
@@ -175,7 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your email';
                     }
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                    if (!RegExp(
+                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                    ).hasMatch(value)) {
                       return 'Enter a valid email address';
                     }
                     return null;
@@ -197,7 +208,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? Icons.visibility_off_outlined
                             : Icons.visibility_outlined,
                       ),
-                      onPressed: () => setState(() => _showPassword = !_showPassword),
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
                     ),
                   ),
                   validator: (value) {
@@ -220,9 +232,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         return;
                       }
                       FirebaseAuth.instance
-                          .sendPasswordResetEmail(email: _emailController.text.trim())
-                          .then((_) => _showSnackBar('Password reset email sent'))
-                          .catchError((e) => _handleAuthError(e as FirebaseAuthException));
+                          .sendPasswordResetEmail(
+                            email: _emailController.text.trim(),
+                          )
+                          .then(
+                            (_) => _showSnackBar('Password reset email sent'),
+                          )
+                          .catchError(
+                            (e) => _handleAuthError(e as FirebaseAuthException),
+                          );
                     },
                     child: const Text('Forgot Password?'),
                   ),

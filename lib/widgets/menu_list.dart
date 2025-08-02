@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:study_sync/screens/main_screen.dart';
 import 'package:study_sync/screens/tasks_screen.dart';
 import 'package:study_sync/screens/dairy_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
 import 'package:study_sync/screens/settings_screen.dart';
 
 class MenuList extends StatefulWidget {
-  final Map<String, dynamic> userData;
-
-  const MenuList({super.key, required this.userData});
+  const MenuList({super.key});
 
   @override
   State<MenuList> createState() => _MenuListState();
@@ -15,7 +14,6 @@ class MenuList extends StatefulWidget {
 
 class _MenuListState extends State<MenuList> {
   int _selectedIndex = -1;
-
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -31,8 +29,8 @@ class _MenuListState extends State<MenuList> {
         const SizedBox(height: 8),
         _buildMenuItem(
           context,
-          icon: Icons.task_rounded,
-          title: 'Tasks',
+          icon: Icons.bar_chart,
+          title: 'Progress',
           index: 1,
           onTap: () => _navigateTo(context, const TasksScreen()),
         ),
@@ -44,20 +42,26 @@ class _MenuListState extends State<MenuList> {
           index: 2,
           onTap: () => _navigateTo(context, const DairyScreen()),
         ),
-        const Divider(height: 30, indent: 20, endIndent: 20),
+        const SizedBox(height: 8),
         _buildMenuItem(
           context,
           icon: Icons.settings_rounded,
           title: 'Settings',
           index: 3,
-          onTap: () => _navigateTo(
+          onTap: () => _navigateTo(context, const SettingsScreen()),
+        ),
+        const Divider(indent: 10, endIndent: 10),
+        _buildMenuItem(
+          context,
+          icon: Icons.logout,
+          title: 'Logout',
+          index: 4,
+          onTap: () => Navigator.push(
             context,
-            SettingsScreen(
-              currentName: widget.userData['name'] ?? 'User',
-              currentEmail: widget.userData['email'] ?? '',
-            ),
+            MaterialPageRoute(builder: (context) => MainScreen()),
           ),
         ),
+        const Divider(indent: 10, endIndent: 10),
       ],
     );
   }
