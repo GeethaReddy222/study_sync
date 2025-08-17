@@ -55,8 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
             password: _passwordController.text.trim(),
           );
 
-      await Provider.of<UserProvider>(context, listen: false)
-          .loadUserData(userCredential.user!);
+      await Provider.of<UserProvider>(context, listen: false).loadUserData(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(

@@ -17,6 +17,8 @@ class Task {
   final DateTime createdAt;
   final bool isRecurring;
   final DateTime? lastRecurrenceDate;
+  final Duration duration;
+  bool notificationSent = false;
 
   Task({
     required this.id,
@@ -35,7 +37,11 @@ class Task {
     required this.createdAt,
     this.isRecurring = false,
     this.lastRecurrenceDate,
+    required this.duration,
+    this.notificationSent = false,
   });
+
+  DateTime get endDate => dueDate.add(duration);
 
   factory Task.fromFireStore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -72,6 +78,8 @@ class Task {
       createdAt: createdAt,
       isRecurring: data['isRecurring'] as bool? ?? false,
       lastRecurrenceDate: lastRecurrenceDate,
+      duration: Duration(minutes: data['durationMinutes'] as int? ?? 30),
+      notificationSent: data['notificationSent'] as bool? ?? false,
     );
   }
 
@@ -83,6 +91,7 @@ class Task {
       'priority': priority,
       'category': category,
       'isCompleted': isCompleted,
+      'notificationSent': notificationSent,
       'createdAt': Timestamp.fromDate(createdAt),
       if (repeatOption != null) 'repeatOption': repeatOption,
       if (repeatDay != null) 'repeatDay': repeatDay,
@@ -93,6 +102,7 @@ class Task {
       'isRecurring': isRecurring,
       if (lastRecurrenceDate != null)
         'lastRecurrenceDate': Timestamp.fromDate(lastRecurrenceDate!),
+      'durationMinutes': duration.inMinutes,
     };
   }
 
@@ -113,6 +123,8 @@ class Task {
     DateTime? createdAt,
     bool? isRecurring,
     DateTime? lastRecurrenceDate,
+    Duration? duration,
+    bool? notificationSent,
   }) {
     return Task(
       id: id ?? this.id,
@@ -131,6 +143,8 @@ class Task {
       createdAt: createdAt ?? this.createdAt,
       isRecurring: isRecurring ?? this.isRecurring,
       lastRecurrenceDate: lastRecurrenceDate ?? this.lastRecurrenceDate,
+      duration: duration ?? this.duration,
+      notificationSent: notificationSent ?? this.notificationSent,
     );
   }
 }

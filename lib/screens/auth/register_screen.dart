@@ -110,12 +110,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       } else {
         errorMessage = 'Error: ${e.message}';
       }
-      print(errorMessage);
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(errorMessage)));
     } catch (e) {
-      print(e);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -226,7 +225,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       Flexible(
                         child: GestureDetector(
                           onTap: () {
-                            // Show terms and conditions
+                            //terms and conditions
                           },
                           child: Text.rich(
                             TextSpan(
@@ -273,8 +272,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Expanded(child: Divider()),
                     ],
                   ),
-                  
-                 
+
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,

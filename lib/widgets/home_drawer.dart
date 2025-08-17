@@ -65,11 +65,13 @@ class _HomeDrawerState extends State<HomeDrawer> {
     final userProvider = Provider.of<UserProvider>(context);
 
     return Container(
-      
+      width: double.infinity,
       padding: const EdgeInsets.only(top: 40, bottom: 20, left: 20, right: 20),
       decoration: BoxDecoration(
+        
         color: Theme.of(context).primaryColor,
         borderRadius: const BorderRadius.only(bottomRight: Radius.circular(20)),
+        
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,

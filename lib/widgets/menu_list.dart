@@ -1,6 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:study_sync/screens/main_screen.dart';
-import 'package:study_sync/screens/tasks_screen.dart';
+import 'package:study_sync/screens/progress_screen.dart';
 import 'package:study_sync/screens/dairy_screen.dart';
 import 'package:study_sync/screens/home_screen.dart';
 import 'package:study_sync/screens/settings_screen.dart';
@@ -14,6 +15,75 @@ class MenuList extends StatefulWidget {
 
 class _MenuListState extends State<MenuList> {
   int _selectedIndex = -1;
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Logout?',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'Are you sure you want to Log out?',
+          style: TextStyle(fontSize: 16),
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          Wrap(
+            spacing: 12,
+            alignment: WrapAlignment.center,
+            children: [
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[700],
+                  side: BorderSide(color: Colors.grey[300]!),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo[400],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MainScreen()),
+                    (route) => false,
+                  );
+                },
+                child: const Text('Logout'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -32,7 +102,7 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.bar_chart,
           title: 'Progress',
           index: 1,
-          onTap: () => _navigateTo(context, const TasksScreen()),
+          onTap: () => _navigateTo(context, const ProgressScreen()),
         ),
         const SizedBox(height: 8),
         _buildMenuItem(
@@ -40,7 +110,7 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.book_rounded,
           title: 'Diary',
           index: 2,
-          onTap: () => _navigateTo(context, const DairyScreen()),
+          onTap: () => _navigateTo(context, const NewDiaryEntryScreen()),
         ),
         const SizedBox(height: 8),
         _buildMenuItem(
@@ -56,10 +126,7 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.logout,
           title: 'Logout',
           index: 4,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => MainScreen()),
-          ),
+          onTap: () => {_confirmLogout()},
         ),
         const Divider(indent: 10, endIndent: 10),
       ],

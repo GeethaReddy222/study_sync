@@ -9,6 +9,7 @@ import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/dairy_screen.dart';
 import 'package:study_sync/screens/progress_screen.dart';
+import 'package:study_sync/services/notifications/notification_service.dart';
 import 'package:study_sync/widgets/home_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -47,6 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoadingTasks = false;
         });
       }
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingTasks = false);
+        _showSnackBar('Firestore error: ${e.message}');
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingTasks = false);
@@ -59,8 +65,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) return [];
 
     final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     try {
       final query = await FirebaseFirestore.instance
@@ -70,33 +74,48 @@ class _HomeScreenState extends State<HomeScreen> {
           .where('isCompleted', isEqualTo: completed)
           .get();
 
-      final tasks = query.docs
-          .map((doc) {
-            try {
-              final task = Task.fromFireStore(doc);
-              final localDue = task.dueDate.toLocal();
-              final isDueToday =
-                  localDue.isAfter(
-                    startOfDay.subtract(const Duration(seconds: 1)),
-                  ) &&
-                  localDue.isBefore(endOfDay.add(const Duration(seconds: 1)));
-              final isRecurringToday =
-                  !completed &&
-                  task.isRecurring &&
-                  _shouldRecurToday(task, now);
+      final tasks =
+          query.docs
+              .map((doc) {
+                try {
+                  final task = Task.fromFireStore(doc);
+                  final localDue = task.dueDate.toLocal();
 
-              return (isDueToday || isRecurringToday) ? task : null;
-            } catch (e) {
-              debugPrint('Error parsing task ${doc.id}: $e');
-              return null;
-            }
-          })
-          .where((task) => task != null)
-          .cast<Task>()
-          .toList();
+                  if (completed) {
+                    final completionDate = task.lastRecurrenceDate?.toLocal();
+                    return completionDate != null &&
+                            completionDate.year == now.year &&
+                            completionDate.month == now.month &&
+                            completionDate.day == now.day
+                        ? task
+                        : null;
+                  }
 
-      tasks.sort((a, b) => a.dueDate.toLocal().compareTo(b.dueDate.toLocal()));
+                  // For pending tasks
+                  final isDueToday =
+                      localDue.year == now.year &&
+                      localDue.month == now.month &&
+                      localDue.day == now.day;
+
+                  final isRecurringToday =
+                      task.isRecurring && _shouldRecurToday(task, now);
+
+                  return (isDueToday || isRecurringToday) ? task : null;
+                } catch (e) {
+                  debugPrint('Error parsing task ${doc.id}: $e');
+                  return null;
+                }
+              })
+              .where((task) => task != null)
+              .cast<Task>()
+              .toList()
+            ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
       return tasks;
+    } on FirebaseException catch (e) {
+      debugPrint('Firestore error: ${e.message}');
+      _showSnackBar('Failed to fetch tasks');
+      return [];
     } catch (e) {
       debugPrint('Error fetching tasks: $e');
       return [];
@@ -112,7 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     switch (task.recurrence) {
       case 'daily':
-        return today.isAfter(lastRecurrenceDate);
+        return today.isAfter(lastRecurrenceDate) ||
+            today.isAtSameMomentAs(lastRecurrenceDate);
       case 'weekly':
         return now.weekday == originalDueDate.weekday &&
             today.difference(lastRecurrenceDate).inDays >= 7;
@@ -130,13 +150,68 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleTaskCompletion(Task task, bool newValue) async {
     try {
-      if (task.recurrence != 'none' && newValue) {
-        await _createNextRecurrence(task);
+      setState(() => _isLoadingTasks = true);
+
+      if (task.recurrence != 'none') {
+        if (newValue) {
+          await _createNextRecurrence(task);
+        } else {
+          await _resetRecurrence(task);
+        }
       }
-      await _updateTaskCompletion(task, newValue);
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('tasks')
+          .doc(task.id)
+          .update({
+            'isCompleted': newValue,
+            'lastRecurrenceDate': newValue
+                ? Timestamp.fromDate(DateTime.now())
+                : FieldValue.delete(),
+          });
+
+      // Handle notifications
+      if (newValue) {
+        await NotificationService().cancelNotification(task.id.hashCode);
+      } else {
+        final notificationTime = task.dueDate.subtract(
+          const Duration(minutes: 30),
+        );
+        await NotificationService().scheduleTaskNotification(
+          taskId: task.id,
+          title: 'Task Reminder: ${task.title}',
+          body: 'Your task "${task.title}" is due soon!',
+          scheduledTime: notificationTime,
+        );
+      }
+
       await _loadTasks();
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingTasks = false);
+        _showSnackBar('Firestore error: ${e.message}');
+      }
     } catch (e) {
-      if (mounted) _showSnackBar('Failed to update task: ${e.toString()}');
+      if (mounted) {
+        setState(() => _isLoadingTasks = false);
+        _showSnackBar('Failed to update task');
+      }
+    }
+  }
+
+  Future<void> _resetRecurrence(Task task) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('tasks')
+          .doc(task.id)
+          .update({'lastRecurrenceDate': FieldValue.delete()});
+    } catch (e) {
+      debugPrint('Error resetting recurrence: $e');
+      rethrow;
     }
   }
 
@@ -178,7 +253,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final adjustedMonth = nextMonth > 12 ? 1 : nextMonth;
         final maxDay = DateUtils.getDaysInMonth(nextYear, adjustedMonth);
         final day = min(task.originalDueDate.day, maxDay);
-
         nextDate = DateTime(
           nextYear,
           adjustedMonth,
@@ -191,36 +265,28 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
     }
 
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user!.uid)
-        .collection("tasks")
-        .add({
-          'title': task.title,
-          'description': task.description,
-          'dueDate': Timestamp.fromDate(nextDate),
-          'priority': task.priority,
-          'category': task.category,
-          'isCompleted': false,
-          'recurrence': task.recurrence,
-          'originalDueDate': Timestamp.fromDate(task.originalDueDate),
-          'createdAt': Timestamp.fromDate(now),
-          'isRecurring': true,
-          'lastRecurrenceDate': Timestamp.fromDate(now),
-        });
-  }
-
-  Future<void> _updateTaskCompletion(Task task, bool completed) async {
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user!.uid)
-        .collection("tasks")
-        .doc(task.id)
-        .update({
-          'isCompleted': completed,
-          if (completed)
-            'lastRecurrenceDate': Timestamp.fromDate(DateTime.now()),
-        });
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('tasks')
+          .add({
+            'title': task.title,
+            'description': task.description,
+            'dueDate': Timestamp.fromDate(nextDate),
+            'priority': task.priority,
+            'category': task.category,
+            'isCompleted': false,
+            'recurrence': task.recurrence,
+            'originalDueDate': Timestamp.fromDate(task.originalDueDate),
+            'createdAt': Timestamp.fromDate(now),
+            'isRecurring': true,
+            'lastRecurrenceDate': null,
+          });
+    } catch (e) {
+      debugPrint('Error creating next recurrence: $e');
+      rethrow;
+    }
   }
 
   void _showSnackBar(String message) {
@@ -356,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return const ProgressScreen();
       case 2:
-        return const DairyScreen();
+        return const NewDiaryEntryScreen();
       default:
         return _buildHomeContent(userProvider);
     }
