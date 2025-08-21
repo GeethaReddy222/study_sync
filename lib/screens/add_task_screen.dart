@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:study_sync/models/task_model.dart';
-import 'package:study_sync/services/notifications/notification_service.dart';
+import 'package:study_sync/services/notification/notification_service.dart';
 import 'package:study_sync/services/task_service.dart';
 
 class AddTaskScreen extends StatefulWidget {

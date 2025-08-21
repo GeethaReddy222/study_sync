@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'package:study_sync/providers/user_provider.dart';
@@ -22,10 +20,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId:
+        '454503718694-1vbu3ovd77i52tu8bk4nd53ebqcngjt4.apps.googleusercontent.com',
     scopes: ['email', 'profile'],
-    clientId: kIsWeb
-        ? null
-        : '454503718694-2al5fr2bip3er1u4d65k67qh9e0ct6je.apps.googleusercontent.com',
   );
 
   bool _showPassword = true;
@@ -55,7 +52,10 @@ class _LoginScreenState extends State<LoginScreen> {
             password: _passwordController.text.trim(),
           );
 
-      await Provider.of<UserProvider>(context, listen: false).loadUserData(userCredential.user!);
+      await Provider.of<UserProvider>(
+        context,
+        listen: false,
+      ).loadUserData(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -86,16 +86,18 @@ class _LoginScreenState extends State<LoginScreen> {
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
+        accessToken: googleAuth.accessToken,
       );
 
       final userCredential = await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
 
-      await Provider.of<UserProvider>(context, listen: false)
-          .loadUserData(userCredential.user!);
+      await Provider.of<UserProvider>(
+        context,
+        listen: false,
+      ).loadUserData(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(

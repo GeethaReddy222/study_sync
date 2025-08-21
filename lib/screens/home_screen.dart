@@ -9,7 +9,7 @@ import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/dairy_screen.dart';
 import 'package:study_sync/screens/progress_screen.dart';
-import 'package:study_sync/services/notifications/notification_service.dart';
+import 'package:study_sync/services/notification/notification_service.dart';
 import 'package:study_sync/widgets/home_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
