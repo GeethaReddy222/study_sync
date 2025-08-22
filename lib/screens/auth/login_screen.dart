@@ -19,11 +19,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId:
-        '454503718694-1vbu3ovd77i52tu8bk4nd53ebqcngjt4.apps.googleusercontent.com',
-    scopes: ['email', 'profile'],
-  );
+
+  // Cache Firebase instances for better performance
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
   bool _showPassword = true;
   bool _isLoading = false;
@@ -46,16 +45,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text.trim(),
-          );
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
 
-      await Provider.of<UserProvider>(
-        context,
-        listen: false,
-      ).loadUserData(userCredential.user!);
+      // Load user data in background without blocking navigation
+      _loadUserDataInBackground(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -71,6 +67,20 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // Load user data without blocking the UI
+  void _loadUserDataInBackground(User user) {
+    Future.microtask(() async {
+      try {
+        await Provider.of<UserProvider>(
+          context,
+          listen: false,
+        ).loadUserData(user);
+      } catch (e) {
+        debugPrint('Background user data loading error: $e');
+      }
+    });
   }
 
   Future<void> _signInWithGoogle() async {
@@ -90,14 +100,10 @@ class _LoginScreenState extends State<LoginScreen> {
         accessToken: googleAuth.accessToken,
       );
 
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
+      final userCredential = await _auth.signInWithCredential(credential);
 
-      await Provider.of<UserProvider>(
-        context,
-        listen: false,
-      ).loadUserData(userCredential.user!);
+      // Load user data in background without blocking navigation
+      _loadUserDataInBackground(userCredential.user!);
 
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -232,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         _showSnackBar('Please enter your email first');
                         return;
                       }
-                      FirebaseAuth.instance
+                      _auth
                           .sendPasswordResetEmail(
                             email: _emailController.text.trim(),
                           )

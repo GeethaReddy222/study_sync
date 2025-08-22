@@ -20,18 +20,29 @@ class NotificationService {
       _notificationStreamController.stream;
 
   bool _webNotificationPermissionGranted = false;
+  bool _isInitialized = false;
 
   Future<void> initialize() async {
+    if (_isInitialized) return;
+
     if (kIsWeb) {
       await _initializeWebNotifications();
+      _isInitialized = true;
       return;
     }
+
+    // Initialize timezone
+    await _configureLocalTimeZone();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const DarwinInitializationSettings initializationSettingsDarwin =
-        DarwinInitializationSettings();
+        DarwinInitializationSettings(
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
@@ -39,13 +50,33 @@ class NotificationService {
           iOS: initializationSettingsDarwin,
         );
 
+    // Create notification channel for Android
+    if (!kIsWeb) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'task_channel', // id
+        'Task Reminders', // title
+        description: 'Notifications for task reminders',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.createNotificationChannel(channel);
+    }
+
     await _notificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         _notificationStreamController.add(response.payload);
       },
     );
-    await _configureLocalTimeZone();
+
+    _isInitialized = true;
+    debugPrint('✅ Notification service initialized');
   }
 
   Future<void> _initializeWebNotifications() async {
@@ -66,11 +97,15 @@ class NotificationService {
 
     tz.initializeTimeZones();
     try {
-      final location = tz.local;
-      tz.setLocalLocation(location);
+      // Use the device's local timezone directly
+      final localLocation = tz.local;
+      tz.setLocalLocation(localLocation);
+      debugPrint('✅ Local timezone configured: ${localLocation.name}');
     } catch (e) {
       debugPrint('Error setting timezone: $e');
+      // Fallback to UTC
       tz.setLocalLocation(tz.getLocation('UTC'));
+      debugPrint('✅ Fallback to UTC timezone');
     }
   }
 
@@ -80,6 +115,10 @@ class NotificationService {
     required String body,
     required DateTime scheduledTime,
   }) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
     if (kIsWeb) {
       await _scheduleWebNotification(
         taskId: taskId,
@@ -91,35 +130,49 @@ class NotificationService {
     }
 
     try {
-      final androidDetails = AndroidNotificationDetails(
-        'task_channel',
-        'Task Reminders',
-        channelDescription: 'Notifications for task reminders',
-        importance: Importance.high,
-        priority: Priority.high,
-        playSound: true,
-        enableVibration: true,
-      );
+      // Convert the DateTime to TZDateTime in the local timezone
+      final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
+      final tzNow = tz.TZDateTime.now(tz.local);
+
+      if (tzScheduledTime.isBefore(tzNow)) {
+        debugPrint('❌ Skipping notification (time in past)');
+        return;
+      }
 
       final notificationDetails = NotificationDetails(
-        android: androidDetails,
-        iOS: DarwinNotificationDetails(),
+        android: AndroidNotificationDetails(
+          'task_channel', // same as channel id
+          'Task Reminders', // same as channel name
+          channelDescription: 'Notifications for task reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+        iOS: const DarwinNotificationDetails(
+          sound: 'default',
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
 
       await _notificationsPlugin.zonedSchedule(
         taskId.hashCode,
         title,
         body,
-        tz.TZDateTime.from(scheduledTime, tz.local),
+        tzScheduledTime,
         notificationDetails,
-        androidAllowWhileIdle: true,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         payload: taskId,
       );
+
+      debugPrint('✅ Notification scheduled (local): $scheduledTime');
+      debugPrint('✅ Notification scheduled (tz): $tzScheduledTime');
+      debugPrint('✅ Current time (tz): $tzNow');
+      debugPrint('✅ Time difference: ${tzScheduledTime.difference(tzNow)}');
     } catch (e) {
-      debugPrint('Error scheduling mobile notification: $e');
-      await _showMobileNotification(taskId: taskId, title: title, body: body);
+      debugPrint('❌ Error scheduling notification: $e');
     }
   }
 
@@ -138,8 +191,9 @@ class NotificationService {
       final now = DateTime.now();
       final delay = scheduledTime.difference(now);
 
+      // If the scheduled time is in the past, don't schedule
       if (delay.inMilliseconds <= 0) {
-        _showWebNotification(title: title, body: body);
+        debugPrint('Scheduled time is in the past, skipping web notification');
         return;
       }
 
@@ -161,32 +215,52 @@ class NotificationService {
     }
   }
 
-  Future<void> _showMobileNotification({
-    required String taskId,
-    required String title,
-    required String body,
-  }) async {
-    await _notificationsPlugin.show(
-      taskId.hashCode,
-      title,
-      body,
-      NotificationDetails(
+  // Add this method to test immediate notifications
+  Future<void> showTestNotification() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    if (kIsWeb) return;
+
+    try {
+      final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
           'task_channel',
           'Task Reminders',
           channelDescription: 'Notifications for task reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
         ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      payload: taskId,
-    );
+        iOS: const DarwinNotificationDetails(
+          sound: 'default',
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      );
+
+      await _notificationsPlugin.show(
+        9999, // Test ID
+        'Test Notification',
+        'This is a test notification sent at ${DateTime.now()}',
+        notificationDetails,
+        payload: 'test',
+      );
+
+      debugPrint('✅ Test notification shown successfully');
+    } catch (e) {
+      debugPrint('❌ Error showing test notification: $e');
+    }
   }
 
   Future<void> showForegroundNotification(RemoteMessage message) async {
     if (kIsWeb) return;
 
     final notification = message.notification;
-    final androidDetails = AndroidNotificationDetails(
+    final androidDetails = const AndroidNotificationDetails(
       'task_channel',
       'Task Reminders',
       channelDescription: 'Notifications for task reminders',
@@ -196,7 +270,15 @@ class NotificationService {
       enableVibration: true,
     );
 
-    final notificationDetails = NotificationDetails(android: androidDetails);
+    final notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(
+        sound: 'default',
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
 
     await _notificationsPlugin.show(
       message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
@@ -211,7 +293,7 @@ class NotificationService {
     if (kIsWeb) return;
 
     final notification = message.notification;
-    final androidDetails = AndroidNotificationDetails(
+    final androidDetails = const AndroidNotificationDetails(
       'task_channel',
       'Task Reminders',
       channelDescription: 'Notifications for task reminders',
@@ -221,7 +303,15 @@ class NotificationService {
       enableVibration: true,
     );
 
-    final notificationDetails = NotificationDetails(android: androidDetails);
+    final notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(
+        sound: 'default',
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
 
     await _notificationsPlugin.show(
       message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,

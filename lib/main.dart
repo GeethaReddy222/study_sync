@@ -8,6 +8,7 @@ import 'package:study_sync/screens/main_screen.dart';
 import 'package:study_sync/services/notification/notification_service.dart';
 import 'firebase_options.dart';
 
+// Background message handler MUST be a top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -16,39 +17,67 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  final notificationService = NotificationService();
-  await notificationService.initialize();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Request notification permissions
-  await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    announcement: false,
-    badge: true,
-    carPlay: false,
-    criticalAlert: false,
-    provisional: false,
-    sound: true,
-  );
+    // Initialize notification service with error handling
+    try {
+      await NotificationService().initialize();
+    } catch (e) {
+      debugPrint('Notification service initialization failed: $e');
+    }
 
-  // Set background handler
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // Request notification permissions
+    final messaging = FirebaseMessaging.instance;
 
-  // Handle foreground messages
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    notificationService.showForegroundNotification(message);
-  });
+    // Request permissions for iOS/macOS
+    NotificationSettings settings = await messaging.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()),
-        Provider<NotificationService>.value(value: notificationService),
-      ],
-      child: const MyApp(),
-    ),
-  );
+    debugPrint('Permission status: ${settings.authorizationStatus}');
+
+    // Get token for debugging
+    final token = await messaging.getToken();
+    debugPrint('FCM Token: $token');
+
+    // Set background handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // Handle foreground messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint('Foreground message received: ${message.messageId}');
+      NotificationService().showForegroundNotification(message);
+    });
+
+    // Handle when app is in background but not terminated
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint('Message opened from background: ${message.messageId}');
+    });
+
+    runApp(
+      MultiProvider(
+        providers: [ChangeNotifierProvider(create: (_) => UserProvider())],
+        child: const MyApp(),
+      ),
+    );
+  } catch (e) {
+    debugPrint('Firebase initialization failed: $e');
+    runApp(
+      MaterialApp(
+        home: Scaffold(body: Center(child: Text('Initialization error: $e'))),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -118,36 +147,55 @@ class MainScreenWithNotificationHandler extends StatefulWidget {
   const MainScreenWithNotificationHandler({super.key});
 
   @override
-  State<MainScreenWithNotificationHandler> createState() => 
+  State<MainScreenWithNotificationHandler> createState() =>
       _MainScreenWithNotificationHandlerState();
 }
 
-class _MainScreenWithNotificationHandlerState 
+class _MainScreenWithNotificationHandlerState
     extends State<MainScreenWithNotificationHandler> {
   StreamSubscription<String?>? _notificationSubscription;
+  RemoteMessage? _initialMessage;
 
   @override
   void initState() {
     super.initState();
     _initializeNotificationHandler();
+    _checkInitialNotification();
   }
 
   void _initializeNotificationHandler() {
-    final notificationService = Provider.of<NotificationService>(
-      context, 
-      listen: false
-    );
-    
-    _notificationSubscription = notificationService.notificationStream.listen(
+    _notificationSubscription = NotificationService().notificationStream.listen(
       (taskId) {
-        if (taskId != null) {
+        if (taskId != null && mounted) {
           _handleNotificationTap(taskId);
         }
-      }
+      },
+      onError: (error) {
+        debugPrint('Notification stream error: $error');
+      },
     );
   }
 
+  Future<void> _checkInitialNotification() async {
+    // Check if app was launched by a notification
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null && mounted) {
+      setState(() {
+        _initialMessage = initialMessage;
+      });
+
+      // Delay handling to ensure the app is fully initialized
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final taskId = initialMessage.data['taskId'];
+        if (taskId != null) {
+          _handleNotificationTap(taskId);
+        }
+      });
+    }
+  }
+
   void _handleNotificationTap(String taskId) {
+    // You might want to navigate to the specific task instead of showing a dialog
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

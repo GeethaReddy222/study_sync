@@ -66,6 +66,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final List<String> _priorities = ["High", "Medium", "Low"];
 
   @override
+  void initState() {
+    super.initState();
+    // Initialize notification service when screen loads
+    NotificationService().initialize();
+  }
+
+  @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
@@ -73,15 +80,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _submitTask() async {
-    setState(() {
-      _showTitleError = _titleController.text.isEmpty;
-      _showPriorityError = _priority == null;
-      _showCategoryError = _category == null;
-      _showDateError = _dueDate == null;
-      _showTimeError = _dueTime == null;
-      _showDurationError = _taskDuration.inMinutes <= 0;
-    });
-
     if (!_formKey.currentState!.validate() ||
         _titleController.text.isEmpty ||
         _priority == null ||
@@ -89,12 +87,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _dueDate == null ||
         _dueTime == null ||
         _taskDuration.inMinutes <= 0) {
-      debugPrint('FORM VALIDATION FAILED');
+      debugPrint('❌ FORM VALIDATION FAILED');
       return;
     }
 
     if (!_validateTimeForToday()) {
-      debugPrint('INVALID TIME SELECTED FOR TODAY');
       _showTimeValidationError();
       return;
     }
@@ -102,18 +99,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      // Don't mutate _dueDate
+      DateTime adjustedDueDate = _dueDate!;
       if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
-          _selectedWeekday != null) {
-        final today = DateTime.now();
-        if (!DateUtils.isSameDay(_dueDate!, today)) {
-          _dueDate = _calculateNextWeeklyDate();
-        }
+          _selectedWeekday != null &&
+          !DateUtils.isSameDay(_dueDate!, DateTime.now())) {
+        adjustedDueDate = _calculateNextWeeklyDate();
       }
 
       final dueDateTime = DateTime(
-        _dueDate!.year,
-        _dueDate!.month,
-        _dueDate!.day,
+        adjustedDueDate.year,
+        adjustedDueDate.month,
+        adjustedDueDate.day,
         _dueTime!.hour,
         _dueTime!.minute,
       );
@@ -125,7 +122,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             builder: (context) => AlertDialog(
               title: const Text('Time Conflict'),
               content: const Text(
-                'You already have a task scheduled during this time period.',
+                'You already have a task scheduled during this time.',
               ),
               actions: [
                 TextButton(
@@ -139,16 +136,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         return;
       }
 
-      if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
-          _selectedWeekday != null) {
-        final bool shouldContinue = await _showRepeatConfirmationDialog();
-        if (!shouldContinue) {
-          setState(() => _isSubmitting = false);
-          return;
-        }
-      }
-
-      String recurrence;
+      String recurrence = 'none';
       bool isRecurring = false;
       switch (_repeatOption) {
         case 'Daily':
@@ -167,18 +155,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           recurrence = 'monthly';
           isRecurring = true;
           break;
-        default:
-          recurrence = 'none';
       }
 
       final newTask = Task(
         id: FirebaseFirestore.instance.collection('tasks').doc().id,
-        title: _titleController.text,
-        description: _descriptionController.text,
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
         dueDate: dueDateTime,
         priority: _priority!,
         category: _category!,
-        repeatOption: _repeatOption == 'Custom...' ? 'custom' : null,
+        repeatOption: _repeatOption == 'Custom...' ? 'custom' : _repeatOption,
         repeatDay: _selectedWeekday,
         repeatCount: _repeatCount,
         repeatUnit: _selectedUnit,
@@ -192,53 +178,29 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       await TaskService().addTask(newTask);
 
-      // Schedule notification 30 minutes before the task is due
-      final notificationTime = dueDateTime.subtract(const Duration(minutes: 30));
-      await NotificationService().scheduleTaskNotification(
-        taskId: newTask.id,
-        title: 'Task Reminder: ${newTask.title}',
-        body:
-            'Your task "${newTask.title}" is due at ${DateFormat.jm().format(dueDateTime)}',
-        scheduledTime: notificationTime,
+      final notificationTime = dueDateTime.subtract(
+        const Duration(minutes: 10),
       );
+      if (notificationTime.isAfter(DateTime.now())) {
+        await NotificationService().scheduleTaskNotification(
+          taskId: newTask.id,
+          title: 'Task Reminder: ${newTask.title}',
+          body:
+              'Your task "${newTask.title}" is due at ${DateFormat.jm().format(dueDateTime)}',
+          scheduledTime: notificationTime,
+        );
+      }
 
       if (mounted) {
-        debugPrint('TASK ADDED SUCCESSFULLY');
+        debugPrint('✅ TASK ADDED SUCCESSFULLY');
         _showSuccessDialog();
       }
     } catch (e) {
-      debugPrint('ERROR ADDING TASK: $e');
-      if (mounted) {
-        _showErrorDialog(e.toString());
-      }
+      debugPrint('❌ ERROR ADDING TASK: $e');
+      if (mounted) _showErrorDialog(e.toString());
     } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      if (mounted) setState(() => _isSubmitting = false);
     }
-  }
-
-  Future<bool> _showRepeatConfirmationDialog() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Confirm Recurring Task'),
-            content: Text(
-              'Task will repeat $_repeatOption on $_selectedWeekday',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Confirm'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
   }
 
   Future<bool> _hasTimeConflict(DateTime newTime, Duration duration) async {
@@ -320,15 +282,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-            title: const Text('Invalid Time'),
-            content: const Text('Please select a future time for today'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ));
+        title: const Text('Invalid Time'),
+        content: const Text('Please select a future time for today'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSuccessDialog() {
@@ -469,7 +432,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             ),
             TextButton(
               onPressed: () {
-                final minutes = int.tryParse(customDurationController.text) ?? 0;
+                final minutes =
+                    int.tryParse(customDurationController.text) ?? 0;
                 if (minutes >= 15 && minutes <= 240) {
                   setState(() {
                     _taskDuration = Duration(minutes: minutes);
@@ -522,7 +486,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Task Title',
                     prefixIcon: const Icon(Icons.title),
-                    errorText: _showTitleError ? 'Please enter a task title' : null,
+                    errorText: _showTitleError
+                        ? 'Please enter a task title'
+                        : null,
                   ),
                   onChanged: (value) => setState(() {
                     if (value.isNotEmpty) _showTitleError = false;
@@ -568,7 +534,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           decoration: InputDecoration(
                             labelText: 'Due Date',
                             prefixIcon: const Icon(Icons.calendar_today),
-                            errorText: _showDateError ? 'Please select a date' : null,
+                            errorText: _showDateError
+                                ? 'Please select a date'
+                                : null,
                           ),
                           child: Text(
                             _dueDate == null
@@ -586,10 +554,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           decoration: InputDecoration(
                             labelText: 'Due Time',
                             prefixIcon: const Icon(Icons.access_time),
-                            errorText: _showTimeError ? 'Please select a time' : null,
+                            errorText: _showTimeError
+                                ? 'Please select a time'
+                                : null,
                           ),
                           child: Text(
-                            _dueTime == null ? 'Select Time' : _dueTime!.format(context),
+                            _dueTime == null
+                                ? 'Select Time'
+                                : _dueTime!.format(context),
                           ),
                         ),
                       ),
@@ -603,11 +575,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     decoration: InputDecoration(
                       labelText: 'Task Duration',
                       prefixIcon: const Icon(Icons.timer),
-                      errorText: _showDurationError ? 'Please select a duration' : null,
+                      errorText: _showDurationError
+                          ? 'Please select a duration'
+                          : null,
                     ),
-                    child: Text(
-                      '${_taskDuration.inMinutes} minutes',
-                    ),
+                    child: Text('${_taskDuration.inMinutes} minutes'),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -632,17 +604,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     setState(() {
                       _repeatOption = newValue!;
                       if (_repeatOption != 'Custom...') _repeatCount = null;
-                      if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
+                      if ((_repeatOption == 'Weekly' ||
+                              _repeatOption == 'Bi-Weekly') &&
                           _dueDate != null) {
                         _selectedWeekday = _weekdays[_dueDate!.weekday % 7];
                       }
                     });
                   },
                 ),
-                if (_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') ...[
+                if (_repeatOption == 'Weekly' ||
+                    _repeatOption == 'Bi-Weekly') ...[
                   const SizedBox(height: 20),
                   DropdownButtonFormField<String>(
-                    value: _selectedWeekday ?? _weekdays[DateTime.now().weekday % 7],
+                    value:
+                        _selectedWeekday ??
+                        _weekdays[DateTime.now().weekday % 7],
                     decoration: const InputDecoration(
                       labelText: 'Repeat on',
                       prefixIcon: Icon(Icons.calendar_view_day),
@@ -679,7 +655,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 labelText: 'Number',
                               ),
                               onChanged: (value) => setState(
-                                  () => _repeatCount = int.tryParse(value)),
+                                () => _repeatCount = int.tryParse(value),
+                              ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Required';
@@ -721,7 +698,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Priority',
                     prefixIcon: const Icon(Icons.priority_high),
-                    errorText: _showPriorityError ? 'Please select a priority' : null,
+                    errorText: _showPriorityError
+                        ? 'Please select a priority'
+                        : null,
                   ),
                   items: _priorities.map((priority) {
                     return DropdownMenuItem<String>(
@@ -740,7 +719,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: InputDecoration(
                     labelText: 'Category',
                     prefixIcon: const Icon(Icons.category),
-                    errorText: _showCategoryError ? 'Please select a category' : null,
+                    errorText: _showCategoryError
+                        ? 'Please select a category'
+                        : null,
                   ),
                   items: _categories.map((category) {
                     return DropdownMenuItem<String>(

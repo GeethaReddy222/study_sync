@@ -306,29 +306,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      appBar: AppBar(
-        title: const Text("StudySync", style: TextStyle(color: Colors.white)),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.indigo.shade400, Colors.indigo.shade600],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-      ),
+      appBar: _currentIndex == 0
+          ? AppBar(
+              title: const Text(
+                "StudySync",
+                style: TextStyle(color: Colors.white),
+              ),
+              centerTitle: true,
+              leading: IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.notifications, color: Colors.white),
+                  onPressed: () {},
+                ),
+              ],
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.indigo.shade400, Colors.indigo.shade600],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            )
+          : null,
       drawer: const HomeDrawer(),
       body: Container(
         decoration: BoxDecoration(
@@ -338,19 +343,70 @@ class _HomeScreenState extends State<HomeScreen> {
             colors: [Colors.indigo.shade50, Colors.grey.shade50],
           ),
         ),
-        child: SafeArea(child: _getCurrentPage(userProvider)),
+        child: SafeArea(
+          child: IndexedStack(
+            index: _currentIndex,
+            children: [
+              _buildHomeContent(userProvider),
+              const ProgressScreen(),
+              const NewDiaryEntryScreen(),
+            ],
+          ),
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.indigo,
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddTaskScreen()),
-          );
-          if (result == true && mounted) await _loadTasks();
-        },
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      // Add both FABs in a Row
+      floatingActionButton: _currentIndex == 0
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 16.0),
+                  child: FloatingActionButton(
+                    heroTag: 'test_notification',
+                    backgroundColor: Colors.orange,
+                    onPressed: () async {
+                      // Test immediate notification
+                      await NotificationService().showTestNotification();
+
+                      // Test scheduled notification (5 seconds from now)
+                      await NotificationService().scheduleTaskNotification(
+                        taskId: 'test-${DateTime.now().millisecondsSinceEpoch}',
+                        title: 'Scheduled Test',
+                        body: 'This is a scheduled test notification',
+                        scheduledTime: DateTime.now().add(Duration(seconds: 5)),
+                      );
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Test notifications scheduled!'),
+                        ),
+                      );
+                    },
+                    tooltip: 'Test Notifications',
+                    child: const Icon(
+                      Icons.notification_add,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                // Main Add Task FAB
+                FloatingActionButton(
+                  heroTag: 'add_task', // Unique heroTag
+                  backgroundColor: Colors.indigo,
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AddTaskScreen(),
+                      ),
+                    );
+                    if (result == true && mounted) await _loadTasks();
+                  },
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+              ],
+            )
+          : null,
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
@@ -413,19 +469,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       label: label,
     );
-  }
-
-  Widget _getCurrentPage(UserProvider userProvider) {
-    switch (_currentIndex) {
-      case 0:
-        return _buildHomeContent(userProvider);
-      case 1:
-        return const ProgressScreen();
-      case 2:
-        return const NewDiaryEntryScreen();
-      default:
-        return _buildHomeContent(userProvider);
-    }
   }
 
   Widget _buildHomeContent(UserProvider userProvider) {
