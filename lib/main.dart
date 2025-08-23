@@ -12,7 +12,13 @@ import 'firebase_options.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await NotificationService().showBackgroundNotification(message);
+
+  // Check if we should process this message (skip on localhost web)
+  final isLocalhostWeb =
+      Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
+  if (!isLocalhostWeb) {
+    await NotificationService().showBackgroundNotification(message);
+  }
 }
 
 void main() async {
@@ -30,39 +36,49 @@ void main() async {
       debugPrint('Notification service initialization failed: $e');
     }
 
-    // Request notification permissions
-    final messaging = FirebaseMessaging.instance;
+    // Check if we're on localhost web before initializing Firebase Messaging
+    final isLocalhostWeb =
+        Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
 
-    // Request permissions for iOS/macOS
-    NotificationSettings settings = await messaging.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
+    if (!isLocalhostWeb) {
+      // Request notification permissions only if not on localhost
+      final messaging = FirebaseMessaging.instance;
 
-    debugPrint('Permission status: ${settings.authorizationStatus}');
+      // Request permissions for iOS/macOS
+      NotificationSettings settings = await messaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
 
-    // Get token for debugging
-    final token = await messaging.getToken();
-    debugPrint('FCM Token: $token');
+      debugPrint('Permission status: ${settings.authorizationStatus}');
 
-    // Set background handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // Get token for debugging
+      final token = await messaging.getToken();
+      debugPrint('FCM Token: $token');
 
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Foreground message received: ${message.messageId}');
-      NotificationService().showForegroundNotification(message);
-    });
+      // Set background handler
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
 
-    // Handle when app is in background but not terminated
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('Message opened from background: ${message.messageId}');
-    });
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint('Foreground message received: ${message.messageId}');
+        NotificationService().showForegroundNotification(message);
+      });
+
+      // Handle when app is in background but not terminated
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('Message opened from background: ${message.messageId}');
+      });
+    } else {
+      debugPrint('⚠️ Skipping Firebase Messaging initialization on localhost');
+    }
 
     runApp(
       MultiProvider(
@@ -177,6 +193,11 @@ class _MainScreenWithNotificationHandlerState
   }
 
   Future<void> _checkInitialNotification() async {
+    // Skip on localhost web
+    final isLocalhostWeb =
+        Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
+    if (isLocalhostWeb) return;
+
     // Check if app was launched by a notification
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null && mounted) {

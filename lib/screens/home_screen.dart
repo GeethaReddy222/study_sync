@@ -354,57 +354,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      // Add both FABs in a Row
+      // Only keep the main Add Task FAB
       floatingActionButton: _currentIndex == 0
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 16.0),
-                  child: FloatingActionButton(
-                    heroTag: 'test_notification',
-                    backgroundColor: Colors.orange,
-                    onPressed: () async {
-                      // Test immediate notification
-                      await NotificationService().showTestNotification();
-
-                      // Test scheduled notification (5 seconds from now)
-                      await NotificationService().scheduleTaskNotification(
-                        taskId: 'test-${DateTime.now().millisecondsSinceEpoch}',
-                        title: 'Scheduled Test',
-                        body: 'This is a scheduled test notification',
-                        scheduledTime: DateTime.now().add(Duration(seconds: 5)),
-                      );
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Test notifications scheduled!'),
-                        ),
-                      );
-                    },
-                    tooltip: 'Test Notifications',
-                    child: const Icon(
-                      Icons.notification_add,
-                      color: Colors.white,
-                    ),
+          ? FloatingActionButton(
+              backgroundColor: Colors.indigo,
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddTaskScreen(),
                   ),
-                ),
-                // Main Add Task FAB
-                FloatingActionButton(
-                  heroTag: 'add_task', // Unique heroTag
-                  backgroundColor: Colors.indigo,
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AddTaskScreen(),
-                      ),
-                    );
-                    if (result == true && mounted) await _loadTasks();
-                  },
-                  child: const Icon(Icons.add, color: Colors.white),
-                ),
-              ],
+                );
+                if (result == true && mounted) await _loadTasks();
+              },
+              child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
       bottomNavigationBar: _buildBottomNavigationBar(),

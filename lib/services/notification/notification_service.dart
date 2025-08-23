@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -21,17 +22,35 @@ class NotificationService {
 
   bool _webNotificationPermissionGranted = false;
   bool _isInitialized = false;
+  bool _isFirebaseMessagingAvailable = true;
+
+  // Helper method to check if running on localhost
+  static bool get isLocalhostWeb {
+    return kIsWeb &&
+        (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1');
+  }
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     if (kIsWeb) {
+      // Always initialize web notifications, even on localhost
       await _initializeWebNotifications();
+
+      if (isLocalhostWeb) {
+        debugPrint(
+          '⚠️ Skipping Firebase Messaging initialization on localhost (development)',
+        );
+        _isFirebaseMessagingAvailable = false;
+      } else {
+        _isFirebaseMessagingAvailable = true;
+      }
+
       _isInitialized = true;
       return;
     }
 
-    // Initialize timezone
+    // Initialize timezone for mobile
     await _configureLocalTimeZone();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -50,15 +69,12 @@ class NotificationService {
           iOS: initializationSettingsDarwin,
         );
 
-    // Create notification channel for Android
     if (!kIsWeb) {
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'task_channel', // id
-        'Task Reminders', // title
-        description: 'Notifications for task reminders',
+        'high_priority_channel',
+        'Task Reminders',
+        description: 'Notifications for important task reminders',
         importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
       );
 
       await _notificationsPlugin
@@ -76,20 +92,63 @@ class NotificationService {
     );
 
     _isInitialized = true;
-    debugPrint('✅ Notification service initialized');
+    debugPrint('✅ Notification service initialized with heads-up support');
   }
 
   Future<void> _initializeWebNotifications() async {
     try {
+      // Check current permission status
       if (html.Notification.permission == 'granted') {
         _webNotificationPermissionGranted = true;
-      } else if (html.Notification.permission != 'denied') {
-        final permission = await html.Notification.requestPermission();
-        _webNotificationPermissionGranted = permission == 'granted';
+        debugPrint('✅ Web notifications permission already granted');
+        return;
+      } else if (html.Notification.permission == 'denied') {
+        debugPrint('❌ Web notifications permission previously denied');
+        _webNotificationPermissionGranted = false;
+        return;
+      }
+
+      // Permission not yet requested or default - request it
+      debugPrint('🔄 Requesting web notification permission...');
+      final permission = await html.Notification.requestPermission();
+
+      _webNotificationPermissionGranted = permission == 'granted';
+
+      if (_webNotificationPermissionGranted) {
+        debugPrint('✅ Web notifications permission granted by user');
+      } else {
+        debugPrint('❌ Web notifications permission denied by user');
       }
     } catch (e) {
       debugPrint('Error initializing web notifications: $e');
+      _webNotificationPermissionGranted = false;
     }
+  }
+
+  // Public method to manually request notification permission
+  Future<bool> requestWebNotificationPermission() async {
+    if (!kIsWeb) return false;
+
+    try {
+      final permission = await html.Notification.requestPermission();
+      _webNotificationPermissionGranted = permission == 'granted';
+
+      if (_webNotificationPermissionGranted) {
+        debugPrint('✅ Web notifications permission granted');
+      } else {
+        debugPrint('❌ Web notifications permission denied');
+      }
+
+      return _webNotificationPermissionGranted;
+    } catch (e) {
+      debugPrint('Error requesting notification permission: $e');
+      return false;
+    }
+  }
+
+  // Check if web notifications are available and permitted
+  bool get areWebNotificationsAvailable {
+    return kIsWeb && _webNotificationPermissionGranted;
   }
 
   Future<void> _configureLocalTimeZone() async {
@@ -97,13 +156,11 @@ class NotificationService {
 
     tz.initializeTimeZones();
     try {
-      // Use the device's local timezone directly
       final localLocation = tz.local;
       tz.setLocalLocation(localLocation);
       debugPrint('✅ Local timezone configured: ${localLocation.name}');
     } catch (e) {
       debugPrint('Error setting timezone: $e');
-      // Fallback to UTC
       tz.setLocalLocation(tz.getLocation('UTC'));
       debugPrint('✅ Fallback to UTC timezone');
     }
@@ -120,6 +177,18 @@ class NotificationService {
     }
 
     if (kIsWeb) {
+      // If permissions not granted, try to request them
+      if (!_webNotificationPermissionGranted) {
+        debugPrint('🔄 No web notification permission, requesting...');
+        final granted = await requestWebNotificationPermission();
+
+        if (!granted) {
+          debugPrint('❌ Cannot schedule notification - permission denied');
+          return;
+        }
+      }
+
+      // Schedule web notification
       await _scheduleWebNotification(
         taskId: taskId,
         title: title,
@@ -130,10 +199,8 @@ class NotificationService {
     }
 
     try {
-      // Convert the DateTime to TZDateTime in the local timezone
       final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
       final tzNow = tz.TZDateTime.now(tz.local);
-
       if (tzScheduledTime.isBefore(tzNow)) {
         debugPrint('❌ Skipping notification (time in past)');
         return;
@@ -141,19 +208,33 @@ class NotificationService {
 
       final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
-          'task_channel', // same as channel id
-          'Task Reminders', // same as channel name
-          channelDescription: 'Notifications for task reminders',
+          'high_priority_channel',
+          'Task Reminders',
+          channelDescription: 'Notifications for important task reminders',
           importance: Importance.high,
           priority: Priority.high,
           playSound: true,
+          sound: null,
           enableVibration: true,
+          ticker: 'Task Reminder',
+          timeoutAfter: 30000,
+          category: AndroidNotificationCategory.reminder,
+          fullScreenIntent: true,
+          autoCancel: true,
+          showWhen: true,
+          when: scheduledTime.millisecondsSinceEpoch,
+          styleInformation: const DefaultStyleInformation(true, true),
+          enableLights: true,
+          ledColor: const Color(0xFFFFA000),
+          ledOnMs: 1000,
+          ledOffMs: 500,
         ),
         iOS: const DarwinNotificationDetails(
           sound: 'default',
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          categoryIdentifier: 'reminder',
         ),
       );
 
@@ -167,10 +248,7 @@ class NotificationService {
         payload: taskId,
       );
 
-      debugPrint('✅ Notification scheduled (local): $scheduledTime');
-      debugPrint('✅ Notification scheduled (tz): $tzScheduledTime');
-      debugPrint('✅ Current time (tz): $tzNow');
-      debugPrint('✅ Time difference: ${tzScheduledTime.difference(tzNow)}');
+      debugPrint('✅ Mobile notification scheduled for: $scheduledTime');
     } catch (e) {
       debugPrint('❌ Error scheduling notification: $e');
     }
@@ -191,7 +269,6 @@ class NotificationService {
       final now = DateTime.now();
       final delay = scheduledTime.difference(now);
 
-      // If the scheduled time is in the past, don't schedule
       if (delay.inMilliseconds <= 0) {
         debugPrint('Scheduled time is in the past, skipping web notification');
         return;
@@ -201,7 +278,7 @@ class NotificationService {
         _showWebNotification(title: title, body: body);
       });
 
-      debugPrint('Web notification scheduled for $scheduledTime');
+      debugPrint('✅ Web notification scheduled for $scheduledTime');
     } catch (e) {
       debugPrint('Error scheduling web notification: $e');
     }
@@ -209,65 +286,72 @@ class NotificationService {
 
   void _showWebNotification({required String title, required String body}) {
     try {
-      html.Notification(title, body: body, icon: '/icons/icon-192x192.png');
+      final notification = html.Notification(
+        title,
+        body: body,
+        icon: '/icons/icon-192x192.png',
+      );
+
+      // Add click handler
+      notification.onClick.listen((event) {
+        debugPrint('Web notification clicked: $title');
+        _notificationStreamController.add('web_notification_clicked');
+      });
+
+      debugPrint('✅ Web notification shown: $title');
     } catch (e) {
       debugPrint('Error showing web notification: $e');
     }
   }
 
-  // Add this method to test immediate notifications
-  Future<void> showTestNotification() async {
-    if (!_isInitialized) {
-      await initialize();
+  // Method to show immediate web notification (for testing)
+  Future<void> showImmediateWebNotification({
+    required String title,
+    required String body,
+  }) async {
+    if (!kIsWeb) return;
+
+    if (!_webNotificationPermissionGranted) {
+      debugPrint('🔄 No web notification permission, requesting...');
+      final granted = await requestWebNotificationPermission();
+
+      if (!granted) {
+        debugPrint('❌ Cannot show notification - permission denied');
+        return;
+      }
     }
 
-    if (kIsWeb) return;
-
-    try {
-      final notificationDetails = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'task_channel',
-          'Task Reminders',
-          channelDescription: 'Notifications for task reminders',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-        ),
-        iOS: const DarwinNotificationDetails(
-          sound: 'default',
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
-
-      await _notificationsPlugin.show(
-        9999, // Test ID
-        'Test Notification',
-        'This is a test notification sent at ${DateTime.now()}',
-        notificationDetails,
-        payload: 'test',
-      );
-
-      debugPrint('✅ Test notification shown successfully');
-    } catch (e) {
-      debugPrint('❌ Error showing test notification: $e');
-    }
+    _showWebNotification(title: title, body: body);
   }
 
   Future<void> showForegroundNotification(RemoteMessage message) async {
-    if (kIsWeb) return;
+    if (!_isFirebaseMessagingAvailable) {
+      debugPrint('⚠️ Firebase Messaging not available (localhost)');
+      return;
+    }
 
     final notification = message.notification;
-    final androidDetails = const AndroidNotificationDetails(
-      'task_channel',
+    final androidDetails = AndroidNotificationDetails(
+      'high_priority_channel',
       'Task Reminders',
-      channelDescription: 'Notifications for task reminders',
+      channelDescription: 'Notifications for important task reminders',
       importance: Importance.high,
       priority: Priority.high,
       playSound: true,
+      sound: null,
       enableVibration: true,
+      ticker: 'New Task Alert',
+      timeoutAfter: 30000,
+      category: AndroidNotificationCategory.reminder,
+      fullScreenIntent: true,
+      autoCancel: true,
+      showWhen: true,
+      when: DateTime.now().millisecondsSinceEpoch,
+      styleInformation: const DefaultStyleInformation(true, true),
+      enableLights: true,
+      ledColor: const Color(0xFFFFA000),
+      ledOnMs: 1000,
+      ledOffMs: 500,
     );
 
     final notificationDetails = NotificationDetails(
@@ -277,6 +361,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        categoryIdentifier: 'reminder',
       ),
     );
 
@@ -290,17 +375,33 @@ class NotificationService {
   }
 
   Future<void> showBackgroundNotification(RemoteMessage message) async {
-    if (kIsWeb) return;
+    if (!_isFirebaseMessagingAvailable) {
+      debugPrint('⚠️ Firebase Messaging not available (localhost)');
+      return;
+    }
 
     final notification = message.notification;
-    final androidDetails = const AndroidNotificationDetails(
-      'task_channel',
+    final androidDetails = AndroidNotificationDetails(
+      'high_priority_channel',
       'Task Reminders',
-      channelDescription: 'Notifications for task reminders',
+      channelDescription: 'Notifications for important task reminders',
       importance: Importance.high,
       priority: Priority.high,
       playSound: true,
+      sound: null,
       enableVibration: true,
+      ticker: 'Task Alert',
+      timeoutAfter: 30000,
+      category: AndroidNotificationCategory.reminder,
+      fullScreenIntent: true,
+      autoCancel: true,
+      showWhen: true,
+      when: DateTime.now().millisecondsSinceEpoch,
+      styleInformation: const DefaultStyleInformation(true, true),
+      enableLights: true,
+      ledColor: const Color(0xFFFFA000),
+      ledOnMs: 1000,
+      ledOffMs: 500,
     );
 
     final notificationDetails = NotificationDetails(
@@ -310,6 +411,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        categoryIdentifier: 'reminder',
       ),
     );
 

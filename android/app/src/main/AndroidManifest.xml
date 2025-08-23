@@ -4,15 +4,19 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Add these exact alarm permissions -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     
     <application
         android:label="study_sync"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
+        <!-- CHANGE THIS LINE: task_channel → high_priority_channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="task_channel" />
+            android:value="high_priority_channel" />
             
         <activity
             android:name=".MainActivity"
