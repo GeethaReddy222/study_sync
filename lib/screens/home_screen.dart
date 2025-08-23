@@ -294,8 +294,9 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.error,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -303,35 +304,37 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
+    final theme = Theme.of(context);
 
     return Scaffold(
       key: _scaffoldKey,
       appBar: _currentIndex == 0
           ? AppBar(
-              title: const Text(
+              title: Text(
                 "StudySync",
-                style: TextStyle(color: Colors.white),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               centerTitle: true,
               leading: IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
+                icon: Icon(
+                  Icons.menu_rounded,
+                  color: theme.colorScheme.onPrimary,
+                ),
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.notifications, color: Colors.white),
+                  icon: Icon(
+                    Icons.notifications_rounded,
+                    color: theme.colorScheme.onPrimary,
+                  ),
                   onPressed: () {},
                 ),
               ],
-              flexibleSpace: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.indigo.shade400, Colors.indigo.shade600],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              ),
+              backgroundColor: theme.colorScheme.primary,
             )
           : null,
       drawer: const HomeDrawer(),
@@ -340,7 +343,10 @@ class _HomeScreenState extends State<HomeScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.indigo.shade50, Colors.grey.shade50],
+            colors: [
+              theme.colorScheme.primaryContainer.withOpacity(0.05),
+              theme.colorScheme.primaryContainer.withOpacity(0.15),
+            ],
           ),
         ),
         child: SafeArea(
@@ -354,10 +360,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      // Only keep the main Add Task FAB
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
-              backgroundColor: Colors.indigo,
+              backgroundColor: theme.colorScheme.primary,
               onPressed: () async {
                 final result = await Navigator.push(
                   context,
@@ -367,7 +372,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (result == true && mounted) await _loadTasks();
               },
-              child: const Icon(Icons.add, color: Colors.white),
+              child: Icon(
+                Icons.add_rounded,
+                color: theme.colorScheme.onPrimary,
+              ),
             )
           : null,
       bottomNavigationBar: _buildBottomNavigationBar(),
@@ -375,34 +383,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomNavigationBar() {
+    final theme = Theme.of(context);
+
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
-          selectedItemColor: Colors.indigo.shade400,
-          unselectedItemColor: Colors.grey.shade600,
+          selectedItemColor: theme.colorScheme.primary,
+          unselectedItemColor: theme.colorScheme.onSurface.withOpacity(0.6),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
           showSelectedLabels: true,
           showUnselectedLabels: true,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          elevation: 10,
+          backgroundColor: theme.colorScheme.surface,
+          elevation: 8,
           items: [
-            _buildBottomNavItem(Icons.home, 'Home', 0),
-            _buildBottomNavItem(Icons.bar_chart, 'Progress', 1),
-            _buildBottomNavItem(Icons.book, 'Diary', 2),
+            _buildBottomNavItem(Icons.home_rounded, 'Home', 0),
+            _buildBottomNavItem(Icons.bar_chart_rounded, 'Progress', 1),
+            _buildBottomNavItem(Icons.book_rounded, 'Diary', 2),
           ],
         ),
       ),
@@ -414,20 +423,23 @@ class _HomeScreenState extends State<HomeScreen> {
     String label,
     int index,
   ) {
+    final theme = Theme.of(context);
+
     return BottomNavigationBarItem(
       icon: Container(
-        padding: const EdgeInsets.all(5),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: _currentIndex == index
-              ? Colors.indigo.shade50
+              ? theme.colorScheme.primary.withOpacity(0.1)
               : Colors.transparent,
         ),
         child: Icon(
           icon,
           color: _currentIndex == index
-              ? Colors.indigo.shade400
-              : Colors.grey.shade600,
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurface.withOpacity(0.6),
+          size: 24,
         ),
       ),
       label: label,
@@ -436,22 +448,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHomeContent(UserProvider userProvider) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildWelcomeSection(context, userProvider),
-          const SizedBox(height: 24),
+          _buildWelcomeSection(userProvider),
+          const SizedBox(height: 32),
           _buildTasksSection(
-            context,
-            'Pending Tasks',
+            'Today\'s Tasks',
             _tasks,
             emptyMessage: 'No pending tasks for today',
           ),
           const SizedBox(height: 24),
           _buildTasksSection(
-            context,
-            'Completed Tasks',
+            'Completed Today',
             _completedTasks,
             emptyMessage: 'No completed tasks yet',
             isCompleted: true,
@@ -461,31 +471,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWelcomeSection(BuildContext context, UserProvider userProvider) {
+  Widget _buildWelcomeSection(UserProvider userProvider) {
+    final theme = Theme.of(context);
+
     return Center(
       child: Column(
         children: [
           Text(
             'Welcome back',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Colors.grey[800],
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             userProvider.name.isNotEmpty ? userProvider.name : 'User',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Colors.indigo.shade800,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             DateFormat('EEEE, MMMM d').format(DateTime.now()),
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
           ),
         ],
       ),
@@ -493,23 +505,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTasksSection(
-    BuildContext context,
     String title,
     List<Task> tasks, {
     required String emptyMessage,
     bool isCompleted = false,
   }) {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Colors.indigo.shade800,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         _isLoadingTasks
             ? _buildLoadingIndicator()
             : tasks.isEmpty
@@ -526,60 +539,73 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildLoadingIndicator() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: const Center(
+      child: Center(
         child: SizedBox(
           height: 24,
           width: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildEmptyState(String message) {
+    final theme = Theme.of(context);
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 1),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Center(
         child: Text(
           message,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.5),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildTaskCard(Task task) {
+    final theme = Theme.of(context);
+    final isCompleted = task.isCompleted;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 1),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -589,45 +615,47 @@ class _HomeScreenState extends State<HomeScreen> {
           vertical: 12,
         ),
         leading: Transform.scale(
-          scale: 1.3,
+          scale: 1.2,
           child: Checkbox(
-            value: task.isCompleted,
+            value: isCompleted,
             onChanged: (value) => _toggleTaskCompletion(task, value!),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(5),
+              borderRadius: BorderRadius.circular(6),
             ),
-            activeColor: Colors.indigo.shade400,
+            activeColor: theme.colorScheme.primary,
           ),
         ),
         title: Text(
           task.title,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: task.isCompleted ? Colors.grey : Colors.indigo.shade300,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: isCompleted
+                ? theme.colorScheme.onSurface.withOpacity(0.5)
+                : theme.colorScheme.onSurface,
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTaskDetailRow(
-                Icons.access_time,
+                Icons.access_time_rounded,
                 DateFormat('h:mm a').format(task.dueDate),
-                Colors.grey[800]!,
+                theme.colorScheme.onSurface.withOpacity(0.6),
               ),
               const SizedBox(height: 4),
               _buildTaskDetailRow(
-                Icons.flag,
+                Icons.flag_rounded,
                 'Priority: ${task.priority}',
                 _getPriorityColor(task.priority),
               ),
               if (task.recurrence != 'none') ...[
                 const SizedBox(height: 4),
                 _buildTaskDetailRow(
-                  Icons.repeat,
+                  Icons.repeat_rounded,
                   'Repeats ${task.recurrence}',
-                  Colors.indigo.shade400,
+                  theme.colorScheme.primary,
                 ),
               ],
             ],
@@ -651,15 +679,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Color _getPriorityColor(String priority) {
+    final theme = Theme.of(context);
+
     switch (priority.toLowerCase()) {
       case 'high':
-        return Colors.red.shade400;
+        return Colors.red;
       case 'medium':
-        return Colors.orange.shade400;
+        return Colors.orange;
       case 'low':
-        return Colors.green.shade400;
+        return Colors.green;
       default:
-        return Colors.grey.shade600;
+        return theme.colorScheme.onSurface.withOpacity(0.6);
     }
   }
 }

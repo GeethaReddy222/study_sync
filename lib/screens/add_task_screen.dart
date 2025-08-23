@@ -68,7 +68,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize notification service when screen loads
     NotificationService().initialize();
   }
 
@@ -80,16 +79,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _submitTask() async {
-    if (!_formKey.currentState!.validate() ||
-        _titleController.text.isEmpty ||
-        _priority == null ||
-        _category == null ||
-        _dueDate == null ||
-        _dueTime == null ||
-        _taskDuration.inMinutes <= 0) {
-      debugPrint('❌ FORM VALIDATION FAILED');
-      return;
-    }
+    // Reset all error states
+    setState(() {
+      _showTitleError = _titleController.text.isEmpty;
+      _showPriorityError = _priority == null;
+      _showCategoryError = _category == null;
+      _showDateError = _dueDate == null;
+      _showTimeError = _dueTime == null;
+      _showDurationError = _taskDuration.inMinutes <= 0;
+    });
 
     if (!_validateTimeForToday()) {
       _showTimeValidationError();
@@ -99,7 +97,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      // Don't mutate _dueDate
       DateTime adjustedDueDate = _dueDate!;
       if ((_repeatOption == 'Weekly' || _repeatOption == 'Bi-Weekly') &&
           _selectedWeekday != null &&
@@ -130,6 +127,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   child: const Text('OK'),
                 ),
               ],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
         }
@@ -197,7 +197,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       }
     } catch (e) {
       debugPrint('❌ ERROR ADDING TASK: $e');
-      if (mounted) _showErrorDialog(e.toString());
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -290,6 +289,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             child: const Text('OK'),
           ),
         ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -309,22 +309,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             child: const Text('OK'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text('Failed to add task: ${error.toString()}'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -364,15 +349,24 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return SizedBox(
-          height: 300,
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Text(
                   'Select Task Duration',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               Expanded(
@@ -395,7 +389,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: TextButton(
+                child: OutlinedButton(
                   onPressed: () {
                     Navigator.pop(context);
                     _showCustomDurationDialog(context);
@@ -403,6 +397,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   child: const Text('Custom Duration'),
                 ),
               ),
+              const SizedBox(height: 16),
             ],
           ),
         );
@@ -438,12 +433,24 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   setState(() {
                     _taskDuration = Duration(minutes: minutes);
                     _showDurationError = false;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Duration set to $minutes minutes'),
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    );
                   });
                   Navigator.pop(context);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Please enter a value between 15 and 240'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 }
@@ -451,6 +458,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               child: const Text('OK'),
             ),
           ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         );
       },
     );
@@ -468,289 +478,416 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Task Details',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _titleController,
-                  decoration: InputDecoration(
-                    labelText: 'Task Title',
-                    prefixIcon: const Icon(Icons.title),
-                    errorText: _showTitleError
-                        ? 'Please enter a task title'
-                        : null,
-                  ),
-                  onChanged: (value) => setState(() {
-                    if (value.isNotEmpty) _showTitleError = false;
-                  }),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return null; // Handled by _showTitleError
-                    }
-                    if (value.length > 100) {
-                      return 'Title should be less than 100 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Description',
-                    prefixIcon: Icon(Icons.description),
-                    alignLabelWithHint: true,
-                  ),
-                  validator: (value) {
-                    if (value != null && value.length > 500) {
-                      return 'Description should be less than 500 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Schedule',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => _selectDate(context),
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Due Date',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            errorText: _showDateError
-                                ? 'Please select a date'
-                                : null,
-                          ),
-                          child: Text(
-                            _dueDate == null
-                                ? 'Select Date'
-                                : DateFormat('MMM dd, yyyy').format(_dueDate!),
-                          ),
-                        ),
-                      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Theme.of(context).colorScheme.primaryContainer.withOpacity(0.05),
+              Theme.of(context).colorScheme.primaryContainer.withOpacity(0.15),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Task Details',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => _selectTime(context),
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Due Time',
-                            prefixIcon: const Icon(Icons.access_time),
-                            errorText: _showTimeError
-                                ? 'Please select a time'
-                                : null,
-                          ),
-                          child: Text(
-                            _dueTime == null
-                                ? 'Select Time'
-                                : _dueTime!.format(context),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                InkWell(
-                  onTap: () => _showDurationPicker(context),
-                  child: InputDecorator(
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _titleController,
                     decoration: InputDecoration(
-                      labelText: 'Task Duration',
-                      prefixIcon: const Icon(Icons.timer),
-                      errorText: _showDurationError
-                          ? 'Please select a duration'
-                          : null,
-                    ),
-                    child: Text('${_taskDuration.inMinutes} minutes'),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Settings',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _repeatOption,
-                  decoration: const InputDecoration(
-                    labelText: 'Repeat',
-                    prefixIcon: Icon(Icons.repeat),
-                  ),
-                  items: _repeatOptions.map((option) {
-                    return DropdownMenuItem<String>(
-                      value: option,
-                      child: Text(option),
-                    );
-                  }).toList(),
-                  onChanged: (newValue) {
-                    setState(() {
-                      _repeatOption = newValue!;
-                      if (_repeatOption != 'Custom...') _repeatCount = null;
-                      if ((_repeatOption == 'Weekly' ||
-                              _repeatOption == 'Bi-Weekly') &&
-                          _dueDate != null) {
-                        _selectedWeekday = _weekdays[_dueDate!.weekday % 7];
-                      }
-                    });
-                  },
-                ),
-                if (_repeatOption == 'Weekly' ||
-                    _repeatOption == 'Bi-Weekly') ...[
-                  const SizedBox(height: 20),
-                  DropdownButtonFormField<String>(
-                    value:
-                        _selectedWeekday ??
-                        _weekdays[DateTime.now().weekday % 7],
-                    decoration: const InputDecoration(
-                      labelText: 'Repeat on',
-                      prefixIcon: Icon(Icons.calendar_view_day),
-                    ),
-                    items: _weekdays.map((day) {
-                      return DropdownMenuItem<String>(
-                        value: day,
-                        child: Text(day),
-                      );
-                    }).toList(),
-                    onChanged: (newValue) =>
-                        setState(() => _selectedWeekday = newValue!),
-                  ),
-                ],
-                if (_repeatOption == 'Custom...') ...[
-                  const SizedBox(height: 20),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16, bottom: 8),
-                        child: Text(
-                          'Repeat Every',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                      labelText: 'Task Title *',
+                      prefixIcon: Icon(
+                        Icons.title_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
                         ),
                       ),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Number',
+                      errorText: _showTitleError
+                          ? 'Please enter a task title'
+                          : null,
+                      errorStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    onChanged: (value) => setState(() {
+                      if (value.isNotEmpty) _showTitleError = false;
+                    }),
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _descriptionController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'Description',
+                      prefixIcon: Icon(
+                        Icons.description_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Schedule',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _selectDate(context),
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Due Date *',
+                              prefixIcon: Icon(
+                                Icons.calendar_today_rounded,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
-                              onChanged: (value) => setState(
-                                () => _repeatCount = int.tryParse(value),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Required';
-                                }
-                                if (int.tryParse(value) == null ||
-                                    int.parse(value) <= 0) {
-                                  return 'Enter valid number';
-                                }
-                                return null;
-                              },
+                              errorText: _showDateError
+                                  ? 'Please select a date'
+                                  : null,
+                              errorStyle: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            child: Text(
+                              _dueDate == null
+                                  ? 'Select Date'
+                                  : DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(_dueDate!),
+                              style: TextStyle(
+                                color: _dueDate == null
+                                    ? Theme.of(context).hintColor
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 4,
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedUnit,
-                              decoration: const InputDecoration(
-                                labelText: 'Unit',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _selectTime(context),
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Due Time *',
+                              prefixIcon: Icon(
+                                Icons.access_time_rounded,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
-                              items: _units.map((unit) {
-                                return DropdownMenuItem<String>(
-                                  value: unit,
-                                  child: Text(unit),
-                                );
-                              }).toList(),
-                              onChanged: (newValue) =>
-                                  setState(() => _selectedUnit = newValue!),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              errorText: _showTimeError
+                                  ? 'Please select a time'
+                                  : null,
+                              errorStyle: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            child: Text(
+                              _dueTime == null
+                                  ? 'Select Time'
+                                  : _dueTime!.format(context),
+                              style: TextStyle(
+                                color: _dueTime == null
+                                    ? Theme.of(context).hintColor
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 20),
-                DropdownButtonFormField<String>(
-                  value: _priority,
-                  decoration: InputDecoration(
-                    labelText: 'Priority',
-                    prefixIcon: const Icon(Icons.priority_high),
-                    errorText: _showPriorityError
-                        ? 'Please select a priority'
-                        : null,
-                  ),
-                  items: _priorities.map((priority) {
-                    return DropdownMenuItem<String>(
-                      value: priority,
-                      child: Text(priority),
-                    );
-                  }).toList(),
-                  onChanged: (newValue) => setState(() {
-                    _priority = newValue!;
-                    _showPriorityError = false;
-                  }),
-                ),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<String>(
-                  value: _category,
-                  decoration: InputDecoration(
-                    labelText: 'Category',
-                    prefixIcon: const Icon(Icons.category),
-                    errorText: _showCategoryError
-                        ? 'Please select a category'
-                        : null,
-                  ),
-                  items: _categories.map((category) {
-                    return DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    );
-                  }).toList(),
-                  onChanged: (newValue) => setState(() {
-                    _category = newValue!;
-                    _showCategoryError = false;
-                  }),
-                ),
-                const SizedBox(height: 32),
-                Center(
-                  child: SizedBox(
-                    width: 200,
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitTask,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Add Task'),
+                  const SizedBox(height: 16),
+                  InkWell(
+                    onTap: () => _showDurationPicker(context),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Task Duration *',
+                        prefixIcon: Icon(
+                          Icons.timer_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        errorText: _showDurationError
+                            ? 'Please select a duration'
+                            : null,
+                        errorStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      child: Text(
+                        '${_taskDuration.inMinutes} minutes',
+                        style: TextStyle(
+                          color: _taskDuration.inMinutes <= 0
+                              ? Theme.of(context).hintColor
+                              : Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 24),
+                  Text(
+                    'Settings',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _priority,
+                    decoration: InputDecoration(
+                      labelText: 'Priority *',
+                      prefixIcon: Icon(
+                        Icons.priority_high_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      errorText: _showPriorityError
+                          ? 'Please select a priority'
+                          : null,
+                      errorStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    items: _priorities.map((priority) {
+                      return DropdownMenuItem<String>(
+                        value: priority,
+                        child: Text(priority),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) => setState(() {
+                      _priority = newValue!;
+                      _showPriorityError = false;
+                    }),
+                  ),
+                  const SizedBox(height: 20),
+                  DropdownButtonFormField<String>(
+                    value: _category,
+                    decoration: InputDecoration(
+                      labelText: 'Category *',
+                      prefixIcon: Icon(
+                        Icons.category_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      errorText: _showCategoryError
+                          ? 'Please select a category'
+                          : null,
+                      errorStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    items: _categories.map((category) {
+                      return DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(category),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) => setState(() {
+                      _category = newValue!;
+                      _showCategoryError = false;
+                    }),
+                  ),
+                  const SizedBox(height: 20),
+                  DropdownButtonFormField<String>(
+                    value: _repeatOption,
+                    decoration: InputDecoration(
+                      labelText: 'Repeat',
+                      prefixIcon: Icon(
+                        Icons.repeat_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: _repeatOptions.map((option) {
+                      return DropdownMenuItem<String>(
+                        value: option,
+                        child: Text(option),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) {
+                      setState(() {
+                        _repeatOption = newValue!;
+                        if (_repeatOption != 'Custom...') _repeatCount = null;
+                        if ((_repeatOption == 'Weekly' ||
+                                _repeatOption == 'Bi-Weekly') &&
+                            _dueDate != null) {
+                          _selectedWeekday = _weekdays[_dueDate!.weekday % 7];
+                        }
+                      });
+                    },
+                  ),
+                  if (_repeatOption == 'Weekly' ||
+                      _repeatOption == 'Bi-Weekly') ...[
+                    const SizedBox(height: 20),
+                    DropdownButtonFormField<String>(
+                      value:
+                          _selectedWeekday ??
+                          _weekdays[DateTime.now().weekday % 7],
+                      decoration: InputDecoration(
+                        labelText: 'Repeat on',
+                        prefixIcon: Icon(
+                          Icons.calendar_view_day_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      items: _weekdays.map((day) {
+                        return DropdownMenuItem<String>(
+                          value: day,
+                          child: Text(day),
+                        );
+                      }).toList(),
+                      onChanged: (newValue) =>
+                          setState(() => _selectedWeekday = newValue!),
+                    ),
+                  ],
+                  if (_repeatOption == 'Custom...') ...[
+                    const SizedBox(height: 20),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, bottom: 8),
+                          child: Text(
+                            'Repeat Every',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextFormField(
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Number',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onChanged: (value) => setState(
+                                  () => _repeatCount = int.tryParse(value),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 4,
+                              child: DropdownButtonFormField<String>(
+                                value: _selectedUnit,
+                                decoration: InputDecoration(
+                                  labelText: 'Unit',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                items: _units.map((unit) {
+                                  return DropdownMenuItem<String>(
+                                    value: unit,
+                                    child: Text(unit),
+                                  );
+                                }).toList(),
+                                onChanged: (newValue) =>
+                                    setState(() => _selectedUnit = newValue!),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 32),
+                  Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _submitTask,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                'Add Task',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

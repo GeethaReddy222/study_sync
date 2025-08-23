@@ -178,29 +178,28 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "StudySync Progress",
-          style: TextStyle(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Profile Settings',
+          style: theme.textTheme.titleLarge?.copyWith(
+            color: theme.colorScheme.onPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.indigo.shade400,
-        foregroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.primary,
         elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _getTasks),
         ],
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.indigo.shade400, Colors.indigo.shade600],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
       ),
+
       body: _errorMessage != null
           ? Padding(
               padding: const EdgeInsets.all(16.0),
@@ -248,7 +247,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Progress Card - Centered horizontally
                   Container(
                     width: double.infinity,
                     alignment: Alignment.center,
@@ -288,7 +286,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                               ).colorScheme.primary.withOpacity(0.2),
                             ),
                             const SizedBox(height: 16),
-                            // Stats row
                             Container(
                               constraints: const BoxConstraints(maxWidth: 300),
                               child: Row(
@@ -322,7 +319,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  // Tasks Section
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -334,7 +330,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Tasks list with tabs
                   SizedBox(
                     height: MediaQuery.of(context).size.height * 0.5,
                     child: DefaultTabController(
@@ -355,7 +350,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                           Expanded(
                             child: TabBarView(
                               children: [
-                                // Completed Tasks
                                 _completedTasks.isEmpty
                                     ? _buildEmptyState(
                                         Icons.check_circle_outline,
@@ -369,7 +363,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
                                           return _buildTaskItem(task, true);
                                         },
                                       ),
-                                // Pending Tasks
                                 _pendingTasks.isEmpty
                                     ? _buildEmptyState(
                                         Icons.assignment_turned_in,
@@ -435,12 +428,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
             color: isCompleted ? Colors.green : Colors.orange,
           ),
         ),
-        title: Text(
-          task.title,
-          style: TextStyle(
-            decoration: isCompleted ? TextDecoration.lineThrough : null,
-          ),
-        ),
+        title: Text(task.title),
         subtitle: Text(DateFormat.jm().format(task.dueDate.toLocal())),
         trailing: isCompleted
             ? Text(

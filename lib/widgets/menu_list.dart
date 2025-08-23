@@ -15,67 +15,82 @@ class MenuList extends StatefulWidget {
 
 class _MenuListState extends State<MenuList> {
   int _selectedIndex = -1;
+
   void _confirmLogout() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(
           'Logout?',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           textAlign: TextAlign.center,
         ),
-        content: const Text(
+        content: Text(
           'Are you sure you want to Log out?',
-          style: TextStyle(fontSize: 16),
+          style: Theme.of(context).textTheme.bodyMedium,
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
-          Wrap(
-            spacing: 12,
-            alignment: WrapAlignment.center,
+          Row(
             children: [
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey[700],
-                  side: BorderSide(color: Colors.grey[300]!),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              Wrap(
+                spacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.7),
+                      side: BorderSide(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withOpacity(0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      elevation: 2,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                      await FirebaseAuth.instance.signOut();
+                      if (!context.mounted) return;
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MainScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    },
+                    child: const Text('Logout'),
                   ),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo[400],
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  elevation: 0,
-                ),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  Navigator.pop(context);
-                  await FirebaseAuth.instance.signOut();
-                  if (!context.mounted) return;
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const MainScreen()),
-                    (route) => false,
-                  );
-                },
-                child: const Text('Logout'),
+                ],
               ),
             ],
           ),
@@ -87,7 +102,7 @@ class _MenuListState extends State<MenuList> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       children: [
         _buildMenuItem(
           context,
@@ -96,15 +111,15 @@ class _MenuListState extends State<MenuList> {
           index: 0,
           onTap: () => _navigateTo(context, const HomeScreen()),
         ),
-        const SizedBox(height: 8),
+
         _buildMenuItem(
           context,
-          icon: Icons.bar_chart,
+          icon: Icons.bar_chart_rounded,
           title: 'Progress',
           index: 1,
           onTap: () => _navigateTo(context, const ProgressScreen()),
         ),
-        const SizedBox(height: 8),
+
         _buildMenuItem(
           context,
           icon: Icons.book_rounded,
@@ -112,7 +127,7 @@ class _MenuListState extends State<MenuList> {
           index: 2,
           onTap: () => _navigateTo(context, const NewDiaryEntryScreen()),
         ),
-        const SizedBox(height: 8),
+
         _buildMenuItem(
           context,
           icon: Icons.settings_rounded,
@@ -120,15 +135,31 @@ class _MenuListState extends State<MenuList> {
           index: 3,
           onTap: () => _navigateTo(context, const SettingsScreen()),
         ),
-        const Divider(indent: 10, endIndent: 10),
+
+        const Divider(
+          height: 1,
+          thickness: 1,
+          indent: 16,
+          endIndent: 16,
+          color: Colors.black12,
+        ),
+
         _buildMenuItem(
           context,
-          icon: Icons.logout,
+          icon: Icons.logout_rounded,
           title: 'Logout',
           index: 4,
-          onTap: () => {_confirmLogout()},
+          onTap: _confirmLogout,
+          isLogout: true,
         ),
-        const Divider(indent: 10, endIndent: 10),
+
+        const Divider(
+          height: 1,
+          thickness: 1,
+          indent: 16,
+          endIndent: 16,
+          color: Colors.black12,
+        ),
       ],
     );
   }
@@ -139,6 +170,7 @@ class _MenuListState extends State<MenuList> {
     required String title,
     required int index,
     required VoidCallback onTap,
+    bool isLogout = false,
   }) {
     final isSelected = _selectedIndex == index;
     final theme = Theme.of(context);
@@ -147,48 +179,78 @@ class _MenuListState extends State<MenuList> {
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         color: isSelected
-            ? theme.primaryColor.withOpacity(0.1)
+            ? theme.colorScheme.primary.withOpacity(0.1)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
+        border: isSelected
+            ? Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.3),
+                width: 1,
+              )
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           onTap: () {
             setState(() => _selectedIndex = index);
             onTap();
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  color: isSelected
-                      ? theme.primaryColor
-                      : theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-                  size: 24,
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isLogout
+                        ? theme.colorScheme.error.withOpacity(0.1)
+                        : isSelected
+                        ? theme.colorScheme.primary.withOpacity(0.2)
+                        : theme.colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: isLogout
+                        ? theme.colorScheme.error
+                        : isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.primary.withOpacity(0.7),
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Text(
                   title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isSelected
-                        ? theme.primaryColor
-                        : theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-                    fontWeight: isSelected
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: isLogout
+                        ? theme.colorScheme.error
+                        : isSelected
+                        ? theme.colorScheme.primary
+                        : theme.textTheme.bodyLarge?.color?.withOpacity(0.8),
+                    fontWeight: isSelected || isLogout
                         ? FontWeight.w600
                         : FontWeight.normal,
                   ),
                 ),
                 const Spacer(),
-                if (isSelected)
+                if (isSelected && !isLogout)
                   Container(
                     width: 4,
                     height: 24,
                     decoration: BoxDecoration(
-                      color: theme.primaryColor,
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                if (isLogout)
+                  Container(
+                    width: 4,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.error,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
