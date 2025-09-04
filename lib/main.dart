@@ -8,12 +8,10 @@ import 'package:study_sync/screens/main_screen.dart';
 import 'package:study_sync/services/notification/notification_service.dart';
 import 'firebase_options.dart';
 
-// Background message handler MUST be a top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Check if we should process this message (skip on localhost web)
   final isLocalhostWeb =
       Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
   if (!isLocalhostWeb) {
@@ -43,8 +41,6 @@ void main() async {
     if (!isLocalhostWeb) {
       // Request notification permissions only if not on localhost
       final messaging = FirebaseMessaging.instance;
-
-      // Request permissions for iOS/macOS
       NotificationSettings settings = await messaging.requestPermission(
         alert: true,
         announcement: false,
@@ -170,7 +166,6 @@ class MainScreenWithNotificationHandler extends StatefulWidget {
 class _MainScreenWithNotificationHandlerState
     extends State<MainScreenWithNotificationHandler> {
   StreamSubscription<String?>? _notificationSubscription;
-  RemoteMessage? _initialMessage;
 
   @override
   void initState() {
@@ -201,9 +196,7 @@ class _MainScreenWithNotificationHandlerState
     // Check if app was launched by a notification
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null && mounted) {
-      setState(() {
-        _initialMessage = initialMessage;
-      });
+      setState(() {});
 
       // Delay handling to ensure the app is fully initialized
       WidgetsBinding.instance.addPostFrameCallback((_) {

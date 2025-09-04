@@ -1,13 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:study_sync/screens/main_screen.dart';
-import 'package:study_sync/screens/progress_screen.dart';
-import 'package:study_sync/screens/dairy_screen.dart';
-import 'package:study_sync/screens/home_screen.dart';
 import 'package:study_sync/screens/settings_screen.dart';
 
 class MenuList extends StatefulWidget {
-  const MenuList({super.key});
+  final Function(int)? onNavigationItemSelected;
+
+  const MenuList({super.key, this.onNavigationItemSelected});
 
   @override
   State<MenuList> createState() => _MenuListState();
@@ -109,7 +108,11 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.dashboard_rounded,
           title: 'Dashboard',
           index: 0,
-          onTap: () => _navigateTo(context, const HomeScreen()),
+          onTap: () {
+            if (widget.onNavigationItemSelected != null) {
+              widget.onNavigationItemSelected!(0);
+            }
+          },
         ),
 
         _buildMenuItem(
@@ -117,7 +120,11 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.bar_chart_rounded,
           title: 'Progress',
           index: 1,
-          onTap: () => _navigateTo(context, const ProgressScreen()),
+          onTap: () {
+            if (widget.onNavigationItemSelected != null) {
+              widget.onNavigationItemSelected!(1);
+            }
+          },
         ),
 
         _buildMenuItem(
@@ -125,7 +132,11 @@ class _MenuListState extends State<MenuList> {
           icon: Icons.book_rounded,
           title: 'Diary',
           index: 2,
-          onTap: () => _navigateTo(context, const NewDiaryEntryScreen()),
+          onTap: () {
+            if (widget.onNavigationItemSelected != null) {
+              widget.onNavigationItemSelected!(2);
+            }
+          },
         ),
 
         _buildMenuItem(
@@ -264,26 +275,6 @@ class _MenuListState extends State<MenuList> {
 
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.of(context).pop();
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => screen,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-
-          var tween = Tween(
-            begin: begin,
-            end: end,
-          ).chain(CurveTween(curve: curve));
-
-          return SlideTransition(
-            position: animation.drive(tween),
-            child: child,
-          );
-        },
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
   }
 }

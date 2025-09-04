@@ -6,7 +6,9 @@ import 'package:percent_indicator/percent_indicator.dart';
 import 'package:intl/intl.dart';
 
 class ProgressScreen extends StatefulWidget {
-  const ProgressScreen({super.key});
+  final VoidCallback? onRefresh;
+
+  const ProgressScreen({super.key, this.onRefresh});
 
   @override
   State<ProgressScreen> createState() => _ProgressScreenState();
@@ -26,6 +28,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
     _getTasks();
   }
 
+  // Make this method public so it can be called from HomeScreen
   Future<void> _getTasks() async {
     if (!mounted || user == null) return;
     setState(() {
@@ -178,29 +181,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Profile Settings',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.onPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: theme.colorScheme.primary,
-        elevation: 0,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _getTasks),
-        ],
-      ),
-
-      body: _errorMessage != null
+    return Material(
+      child: _errorMessage != null
           ? Padding(
               padding: const EdgeInsets.all(16.0),
               child: Center(

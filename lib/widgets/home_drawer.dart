@@ -5,7 +5,9 @@ import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/widgets/menu_list.dart';
 
 class HomeDrawer extends StatefulWidget {
-  const HomeDrawer({super.key});
+  final Function(int)? onNavigationItemSelected;
+
+  const HomeDrawer({super.key, this.onNavigationItemSelected});
 
   @override
   State<HomeDrawer> createState() => _HomeDrawerState();
@@ -66,7 +68,11 @@ class _HomeDrawerState extends State<HomeDrawer> {
         child: Column(
           children: [
             _buildUserHeader(context),
-            const Expanded(child: MenuList()),
+            Expanded(
+              child: MenuList(
+                onNavigationItemSelected: widget.onNavigationItemSelected,
+              ),
+            ),
           ],
         ),
       ),

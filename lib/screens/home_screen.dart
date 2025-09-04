@@ -7,13 +7,16 @@ import 'package:provider/provider.dart';
 import 'package:study_sync/models/task_model.dart';
 import 'package:study_sync/providers/user_provider.dart';
 import 'package:study_sync/screens/add_task_screen.dart';
-import 'package:study_sync/screens/dairy_screen.dart';
+import 'package:study_sync/screens/diary_screen.dart';
 import 'package:study_sync/screens/progress_screen.dart';
 import 'package:study_sync/services/notification/notification_service.dart';
+import 'package:study_sync/widgets/app_bar.dart';
 import 'package:study_sync/widgets/home_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialTabIndex;
+
+  const HomeScreen({super.key, required this.initialTabIndex});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -22,7 +25,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final User? user = FirebaseAuth.instance.currentUser;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  int _currentIndex = 0;
+  late int _currentIndex;
   List<Task> _tasks = [];
   List<Task> _completedTasks = [];
   bool _isLoadingTasks = false;
@@ -30,7 +33,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialTabIndex;
     _loadTasks();
+  }
+
+  // Handle navigation from drawer
+  void _handleNavigationItemSelected(int index) {
+    // Close the drawer
+    _scaffoldKey.currentState?.openEndDrawer();
+
+    // Navigate to the selected tab
+    setState(() {
+      _currentIndex = index;
+    });
   }
 
   Future<void> _loadTasks() async {
@@ -65,52 +80,82 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) return [];
 
     final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     try {
-      final query = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .collection('tasks')
-          .where('isCompleted', isEqualTo: completed)
-          .get();
+      QuerySnapshot query;
 
-      final tasks =
-          query.docs
-              .map((doc) {
-                try {
-                  final task = Task.fromFireStore(doc);
-                  final localDue = task.dueDate.toLocal();
+      if (completed) {
+        // For completed tasks, use a simpler query to avoid index issues
+        query = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user!.uid)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: true)
+            .get();
 
-                  if (completed) {
-                    final completionDate = task.lastRecurrenceDate?.toLocal();
-                    return completionDate != null &&
-                            completionDate.year == now.year &&
-                            completionDate.month == now.month &&
-                            completionDate.day == now.day
-                        ? task
-                        : null;
-                  }
+        // Filter locally for tasks completed today
+        final allCompletedTasks = query.docs
+            .map((doc) {
+              try {
+                return Task.fromFireStore(doc);
+              } catch (e) {
+                debugPrint('Error parsing task ${doc.id}: $e');
+                return null;
+              }
+            })
+            .where((task) => task != null)
+            .cast<Task>()
+            .toList();
 
-                  // For pending tasks
-                  final isDueToday =
-                      localDue.year == now.year &&
-                      localDue.month == now.month &&
-                      localDue.day == now.day;
+        // Filter for tasks completed today using lastRecurrenceDate
+        return allCompletedTasks.where((task) {
+          if (task.lastRecurrenceDate != null) {
+            final completionDate = task.lastRecurrenceDate!;
+            return completionDate.year == now.year &&
+                completionDate.month == now.month &&
+                completionDate.day == now.day;
+          }
+          return false;
+        }).toList();
+      } else {
+        // For pending tasks, get all incomplete tasks and filter locally
+        query = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user!.uid)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: false)
+            .get();
+      }
 
-                  final isRecurringToday =
-                      task.isRecurring && _shouldRecurToday(task, now);
+      final tasks = query.docs
+          .map((doc) {
+            try {
+              return Task.fromFireStore(doc);
+            } catch (e) {
+              debugPrint('Error parsing task ${doc.id}: $e');
+              return null;
+            }
+          })
+          .where((task) => task != null)
+          .cast<Task>()
+          .toList();
 
-                  return (isDueToday || isRecurringToday) ? task : null;
-                } catch (e) {
-                  debugPrint('Error parsing task ${doc.id}: $e');
-                  return null;
-                }
-              })
-              .where((task) => task != null)
-              .cast<Task>()
-              .toList()
-            ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+      // For pending tasks, filter by due date or recurrence
+      if (!completed) {
+        tasks.removeWhere((task) {
+          final dueDate = task.dueDate.toLocal();
+          final isDueToday =
+              dueDate.isAfter(startOfDay) && dueDate.isBefore(endOfDay);
+          final isRecurringToday =
+              task.isRecurring && _shouldRecurToday(task, now);
 
+          return !isDueToday && !isRecurringToday;
+        });
+      }
+
+      tasks.sort((a, b) => a.dueDate.compareTo(b.dueDate));
       return tasks;
     } on FirebaseException catch (e) {
       debugPrint('Firestore error: ${e.message}');
@@ -126,21 +171,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!task.isRecurring) return false;
 
     final today = DateTime(now.year, now.month, now.day);
-    final originalDueDate = task.originalDueDate;
-    final lastRecurrenceDate = task.lastRecurrenceDate ?? originalDueDate;
+    final lastRecurrenceDate =
+        task.lastRecurrenceDate?.toLocal() ?? task.originalDueDate.toLocal();
+    final lastRecurrenceDay = DateTime(
+      lastRecurrenceDate.year,
+      lastRecurrenceDate.month,
+      lastRecurrenceDate.day,
+    );
 
     switch (task.recurrence) {
       case 'daily':
-        return today.isAfter(lastRecurrenceDate) ||
-            today.isAtSameMomentAs(lastRecurrenceDate);
+        return today.isAfter(lastRecurrenceDay);
       case 'weekly':
-        return now.weekday == originalDueDate.weekday &&
-            today.difference(lastRecurrenceDate).inDays >= 7;
+        return now.weekday == task.originalDueDate.toLocal().weekday &&
+            today.difference(lastRecurrenceDay).inDays >= 7;
       case 'biweekly':
-        return now.weekday == originalDueDate.weekday &&
-            today.difference(lastRecurrenceDate).inDays >= 14;
+        return now.weekday == task.originalDueDate.toLocal().weekday &&
+            today.difference(lastRecurrenceDay).inDays >= 14;
       case 'monthly':
-        return now.day == originalDueDate.day &&
+        // Check if it's the same day of month and we haven't completed it this month
+        return now.day == task.originalDueDate.toLocal().day &&
             (now.month > lastRecurrenceDate.month ||
                 now.year > lastRecurrenceDate.year);
       default:
@@ -176,9 +226,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (newValue) {
         await NotificationService().cancelNotification(task.id.hashCode);
       } else {
-        final notificationTime = task.dueDate.subtract(
-          const Duration(minutes: 30),
-        );
+        final now = DateTime.now();
+        final notificationTime = task.dueDate.isAfter(now)
+            ? task.dueDate.subtract(const Duration(minutes: 30))
+            : now.add(const Duration(seconds: 5));
+
         await NotificationService().scheduleTaskNotification(
           taskId: task.id,
           title: 'Task Reminder: ${task.title}',
@@ -249,10 +301,13 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case 'monthly':
         final nextMonth = now.month + 1;
-        final nextYear = nextMonth > 12 ? now.year + 1 : now.year;
-        final adjustedMonth = nextMonth > 12 ? 1 : nextMonth;
+        final nextYear = now.year + (nextMonth > 12 ? 1 : 0);
+        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+
+        // Ensure we don't exceed days in month
         final maxDay = DateUtils.getDaysInMonth(nextYear, adjustedMonth);
         final day = min(task.originalDueDate.day, maxDay);
+
         nextDate = DateTime(
           nextYear,
           adjustedMonth,
@@ -301,6 +356,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _getAppBarTitle() {
+    switch (_currentIndex) {
+      case 0:
+        return "StudySync";
+      case 1:
+        return "Today's Progress";
+      case 2:
+        return "Diary";
+      default:
+        return "StudySync";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
@@ -308,36 +376,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      appBar: _currentIndex == 0
-          ? AppBar(
-              title: Text(
-                "StudySync",
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: theme.colorScheme.onPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              centerTitle: true,
-              leading: IconButton(
-                icon: Icon(
-                  Icons.menu_rounded,
-                  color: theme.colorScheme.onPrimary,
-                ),
-                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              ),
-              actions: [
-                IconButton(
-                  icon: Icon(
-                    Icons.notifications_rounded,
-                    color: theme.colorScheme.onPrimary,
-                  ),
-                  onPressed: () {},
-                ),
-              ],
-              backgroundColor: theme.colorScheme.primary,
-            )
-          : null,
-      drawer: const HomeDrawer(),
+      appBar: StudySyncAppBar(
+        title: _getAppBarTitle(),
+        showBackButton: false,
+        showMenuButton: true,
+        onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        actions: [
+          if (_currentIndex == 1) // Progress screen actions
+            IconButton(
+              icon: Icon(Icons.refresh, color: theme.colorScheme.onPrimary),
+              onPressed: () {
+                if (_currentIndex == 1) {
+                  _loadTasks();
+                }
+              },
+            ),
+          IconButton(
+            icon: Icon(
+              Icons.notifications_rounded,
+              color: theme.colorScheme.onPrimary,
+            ),
+            onPressed: () {},
+          ),
+        ],
+      ),
+      drawer: HomeDrawer(
+        onNavigationItemSelected: _handleNavigationItemSelected,
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -354,8 +419,11 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _currentIndex,
             children: [
               _buildHomeContent(userProvider),
-              const ProgressScreen(),
-              const NewDiaryEntryScreen(),
+              ProgressScreen(
+                key: ValueKey(_currentIndex),
+                onRefresh: _loadTasks,
+              ),
+              const DiaryScreen(),
             ],
           ),
         ),
@@ -520,6 +588,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.primary,
+            fontSize: 20,
           ),
         ),
         const SizedBox(height: 16),

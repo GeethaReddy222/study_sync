@@ -58,7 +58,7 @@ class TaskService {
           .collection('tasks')
           .doc(task.id)
           .update({'isCompleted': true});
-      
+
       debugPrint('✅ TASK COMPLETED SUCCESSFULLY');
     } catch (e) {
       debugPrint('❌ ERROR COMPLETING TASK: $e');
@@ -99,7 +99,9 @@ class TaskService {
         debugPrint('   - Due: ${task.dueDate}');
         debugPrint('   - Completed: ${task.isCompleted}');
         debugPrint('   - Recurring: ${task.isRecurring} (${task.recurrence})');
-        debugPrint('   - Last Occurrence: ${task.lastRecurrenceDate ?? 'None'}');
+        debugPrint(
+          '   - Last Occurrence: ${task.lastRecurrenceDate ?? 'None'}',
+        );
 
         pendingTasks.add(task);
 
@@ -150,13 +152,9 @@ class TaskService {
 
   bool _needsNewOccurrence(Task task, DateTime now) {
     if (!task.isRecurring) return false;
-    
+
     final lastOccurrence = task.lastRecurrenceDate ?? task.dueDate;
     final today = DateTime(now.year, now.month, now.day);
-
-    debugPrint('\n   🔎 CHECKING RECURRENCE FOR: ${task.title}');
-    debugPrint('   - Last Occurrence: $lastOccurrence');
-    debugPrint('   - Today: $today');
 
     bool needsOccurrence = false;
     String reason = '';
@@ -164,22 +162,34 @@ class TaskService {
     switch (task.recurrence) {
       case 'daily':
         needsOccurrence = today.isAfter(lastOccurrence);
-        reason = needsOccurrence ? 'Daily recurrence needed' : 'Not enough time passed';
+        reason = needsOccurrence
+            ? 'Daily recurrence needed'
+            : 'Not enough time passed';
         break;
       case 'weekly':
-        needsOccurrence = now.weekday == task.dueDate.weekday && 
+        needsOccurrence =
+            now.weekday == task.dueDate.weekday &&
             today.difference(lastOccurrence).inDays >= 7;
-        reason = needsOccurrence ? 'Weekly recurrence day matched' : 'Wrong weekday or not enough time';
+        reason = needsOccurrence
+            ? 'Weekly recurrence day matched'
+            : 'Wrong weekday or not enough time';
         break;
       case 'biweekly':
-        needsOccurrence = now.weekday == task.dueDate.weekday && 
+        needsOccurrence =
+            now.weekday == task.dueDate.weekday &&
             today.difference(lastOccurrence).inDays >= 14;
-        reason = needsOccurrence ? 'Biweekly recurrence day matched' : 'Wrong weekday or not enough time';
+        reason = needsOccurrence
+            ? 'Biweekly recurrence day matched'
+            : 'Wrong weekday or not enough time';
         break;
       case 'monthly':
-        needsOccurrence = now.day == task.dueDate.day && 
-            (now.month > lastOccurrence.month || now.year > lastOccurrence.year);
-        reason = needsOccurrence ? 'Monthly recurrence day matched' : 'Wrong day or month';
+        needsOccurrence =
+            now.day == task.dueDate.day &&
+            (now.month > lastOccurrence.month ||
+                now.year > lastOccurrence.year);
+        reason = needsOccurrence
+            ? 'Monthly recurrence day matched'
+            : 'Wrong day or month';
         break;
       default:
         reason = 'Not a recurring task';
@@ -192,10 +202,6 @@ class TaskService {
   DateTime _calculateNextOccurrence(Task task) {
     final lastOccurrence = task.lastRecurrenceDate ?? task.dueDate;
     final originalTime = TimeOfDay.fromDateTime(task.dueDate);
-
-    debugPrint('\n   📅 CALCULATING NEXT OCCURRENCE FOR: ${task.title}');
-    debugPrint('   - Last Occurrence: $lastOccurrence');
-    debugPrint('   - Original Time: ${originalTime.hour}:${originalTime.minute}');
 
     DateTime nextDate;
 
@@ -229,7 +235,9 @@ class TaskService {
         break;
       case 'monthly':
         nextDate = DateTime(
-          lastOccurrence.month == 12 ? lastOccurrence.year + 1 : lastOccurrence.year,
+          lastOccurrence.month == 12
+              ? lastOccurrence.year + 1
+              : lastOccurrence.year,
           lastOccurrence.month == 12 ? 1 : lastOccurrence.month + 1,
           task.dueDate.day,
           originalTime.hour,

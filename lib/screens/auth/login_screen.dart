@@ -20,8 +20,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
 
-  // Cache Firebase instances for better performance
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
   bool _showPassword = true;
@@ -45,10 +43,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
       // Load user data in background without blocking navigation
       _loadUserDataInBackground(userCredential.user!);
@@ -56,7 +55,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (context) => const HomeScreen(initialTabIndex: 0),
+        ),
         (route) => false,
       );
     } on FirebaseAuthException catch (e) {
@@ -100,7 +101,9 @@ class _LoginScreenState extends State<LoginScreen> {
         accessToken: googleAuth.accessToken,
       );
 
-      final userCredential = await _auth.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
 
       // Load user data in background without blocking navigation
       _loadUserDataInBackground(userCredential.user!);
@@ -108,7 +111,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (context) => const HomeScreen(initialTabIndex: 0),
+        ),
         (route) => false,
       );
     } on FirebaseAuthException catch (e) {
@@ -143,6 +148,26 @@ class _LoginScreenState extends State<LoginScreen> {
         errorMessage = 'Authentication failed: ${e.message}';
     }
     _showSnackBar(errorMessage);
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your email';
+    }
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+      return 'Enter a valid email address';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your password';
+    }
+    if (value.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+    return null;
   }
 
   void _showSnackBar(String message) {
@@ -249,17 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
-                          }
-                          if (!RegExp(
-                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                          ).hasMatch(value)) {
-                            return 'Enter a valid email address';
-                          }
-                          return null;
-                        },
+                        validator: _validateEmail,
                         onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
                       ),
                       const SizedBox(height: 20),
@@ -296,15 +311,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 setState(() => _showPassword = !_showPassword),
                           ),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your password';
-                          }
-                          if (value.length < 6) {
-                            return 'Password must be at least 6 characters';
-                          }
-                          return null;
-                        },
+                        validator: _validatePassword,
                       ),
                       const SizedBox(height: 8),
                       Align(
@@ -315,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _showSnackBar('Please enter your email first');
                               return;
                             }
-                            _auth
+                            FirebaseAuth.instance
                                 .sendPasswordResetEmail(
                                   email: _emailController.text.trim(),
                                 )
