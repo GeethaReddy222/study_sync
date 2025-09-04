@@ -62,7 +62,31 @@ class DiaryService {
     }
   }
 
-  // Get all diary entries (read-only for past entries)
+  // Get diary entry for a specific date
+  Future<DiaryEntry?> getEntryForDate(DateTime date) async {
+    try {
+      final startOfDay = DateTime(date.year, date.month, date.day);
+      final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+
+      final querySnapshot = await _userDiaryRef
+          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        return null;
+      }
+
+      final doc = querySnapshot.docs.first;
+      return DiaryEntry.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+    } catch (e) {
+      print('Error getting diary entry for date: $e');
+      return null;
+    }
+  }
+
+  // Get all diary entries
   Stream<List<DiaryEntry>> getAllEntries() {
     return _userDiaryRef
         .orderBy('date', descending: true)
@@ -83,5 +107,23 @@ class DiaryService {
   Future<bool> hasEntryForToday() async {
     final entry = await getTodaysEntry();
     return entry != null;
+  }
+
+  // Get entries with dates that have entries
+  Future<List<DateTime>> getEntryDates() async {
+    try {
+      final querySnapshot = await _userDiaryRef
+          .orderBy('date', descending: true)
+          .get();
+
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final timestamp = data['date'] as Timestamp;
+        return timestamp.toDate();
+      }).toList();
+    } catch (e) {
+      print('Error getting entry dates: $e');
+      return [];
+    }
   }
 }
