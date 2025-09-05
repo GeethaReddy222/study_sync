@@ -35,7 +35,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error loading today’s entry: $e");
+      print("Error loading today's entry: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -159,7 +159,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
   Widget _buildPreviousEntriesView(ThemeData theme) {
     return Column(
       children: [
-        // Calendar Picker Button
+        // Pick a Date button with primary color
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: ElevatedButton.icon(
@@ -178,87 +178,105 @@ class _DiaryScreenState extends State<DiaryScreen> {
                 });
               }
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
             icon: const Icon(Icons.calendar_month),
             label: const Text("Pick a Date"),
           ),
         ),
 
+        // Show only the selected entry or empty state
         Expanded(
           child: _selectedEntry != null
               ? _buildEntryContent(theme, _selectedEntry!)
-              : StreamBuilder<List<DiaryEntry>>(
-                  stream: _diaryService.getAllEntries(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text("Error: ${snapshot.error}"));
-                    }
-
-                    final entries = snapshot.data ?? [];
-                    final previousEntries = entries
-                        .where((e) => !e.isToday)
-                        .toList();
-
-                    if (previousEntries.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.history,
-                              size: 64,
-                              color: theme.colorScheme.onSurface.withOpacity(
-                                0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No previous entries yet',
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurface.withOpacity(
-                                  0.5,
-                                ),
-                              ),
-                            ),
-                          ],
+              : _selectedDate != null
+              ? Center(
+                  child: Text(
+                    "No entry for ${DateFormat('MMM d, y').format(_selectedDate!)}",
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 64,
+                        color: theme.colorScheme.onSurface.withOpacity(0.3),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Select a date to view entry',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5),
                         ),
-                      );
-                    }
-
-                    return ListView.builder(
-                      itemCount: previousEntries.length,
-                      itemBuilder: (context, index) {
-                        final entry = previousEntries[index];
-                        return _buildEntryCard(theme, entry);
-                      },
-                    );
-                  },
+                      ),
+                    ],
+                  ),
                 ),
         ),
       ],
     );
   }
 
-  Widget _buildEntryCard(ThemeData theme, DiaryEntry entry) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        title: Text(DateFormat('MMM d, y').format(entry.date)),
-        subtitle: Text(
-          entry.title.isNotEmpty ? entry.title : entry.content,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+  Widget _buildEntryContent(ThemeData theme, DiaryEntry entry) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    DateFormat('MMM d, y').format(entry.date),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (entry.isPrivate) const Icon(Icons.lock_outline, size: 16),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (entry.title.isNotEmpty) ...[
+                Text(
+                  entry.title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              Text(
+                entry.content,
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(entry.mood, style: const TextStyle(fontSize: 24)),
+                  const Spacer(),
+                  Text(
+                    DateFormat('MMM d, y • hh:mm a').format(entry.createdAt),
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        trailing: entry.isPrivate
-            ? const Icon(Icons.lock_outline, size: 16)
-            : null,
-        onTap: () {
-          setState(() {
-            _selectedEntry = entry;
-          });
-        },
       ),
     );
   }
@@ -287,46 +305,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
               color: theme.colorScheme.onSurface.withOpacity(0.4),
               fontSize: 14,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEntryContent(ThemeData theme, DiaryEntry entry) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (entry.title.isNotEmpty) ...[
-            Text(
-              entry.title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          Text(
-            entry.content,
-            style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Text(entry.mood, style: const TextStyle(fontSize: 24)),
-              const SizedBox(width: 8),
-              if (entry.isPrivate) const Icon(Icons.lock_outline, size: 16),
-              const Spacer(),
-              Text(
-                DateFormat('hh:mm a').format(entry.createdAt),
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                  fontSize: 12,
-                ),
-              ),
-            ],
           ),
         ],
       ),

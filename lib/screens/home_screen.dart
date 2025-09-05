@@ -381,24 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
         showBackButton: false,
         showMenuButton: true,
         onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
-        actions: [
-          if (_currentIndex == 1) // Progress screen actions
-            IconButton(
-              icon: Icon(Icons.refresh, color: theme.colorScheme.onPrimary),
-              onPressed: () {
-                if (_currentIndex == 1) {
-                  _loadTasks();
-                }
-              },
-            ),
-          IconButton(
-            icon: Icon(
-              Icons.notifications_rounded,
-              color: theme.colorScheme.onPrimary,
-            ),
-            onPressed: () {},
-          ),
-        ],
       ),
       drawer: HomeDrawer(
         onNavigationItemSelected: _handleNavigationItemSelected,
