@@ -49,7 +49,6 @@ class _DiaryEditorState extends State<DiaryEditor> {
         content: _contentController.text,
         date: today,
         mood: _selectedMood,
-        isPrivate: _isPrivate,
         createdAt: now,
       );
 

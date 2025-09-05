@@ -470,6 +470,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.primary,
         title: const Text('Add New Task'),
         actions: [
           IconButton(
@@ -478,6 +479,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           ),
         ],
       ),
+
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

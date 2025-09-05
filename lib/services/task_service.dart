@@ -150,6 +150,117 @@ class TaskService {
     }
   }
 
+  // Add these methods to your existing TaskService class
+
+  Future<List<Task>> getTasksForToday(bool completed) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    return _getTasksForDateRange(startOfDay, endOfDay, completed);
+  }
+
+  Future<List<Task>> getCompletedTasksForToday() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    final now = DateTime.now();
+    return _getCompletedTasksForDate(now);
+  }
+
+  Future<List<Task>> _getTasksForDateRange(
+    DateTime start,
+    DateTime end,
+    bool completed,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    try {
+      QuerySnapshot query;
+
+      if (completed) {
+        query = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: true)
+            .get();
+      } else {
+        query = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: false)
+            .get();
+      }
+
+      final tasks = query.docs
+          .map((doc) {
+            try {
+              return Task.fromFireStore(doc);
+            } catch (e) {
+              return null;
+            }
+          })
+          .where((task) => task != null)
+          .cast<Task>()
+          .toList();
+
+      // Filter by due date
+      if (!completed) {
+        tasks.removeWhere((task) {
+          final dueDate = task.dueDate.toLocal();
+          return !(dueDate.isAfter(start) && dueDate.isBefore(end));
+        });
+      }
+
+      return tasks;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<Task>> _getCompletedTasksForDate(DateTime date) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('tasks')
+          .where('isCompleted', isEqualTo: true)
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) {
+            try {
+              return Task.fromFireStore(doc);
+            } catch (e) {
+              return null;
+            }
+          })
+          .where((task) => task != null)
+          .where((task) {
+            if (task!.lastRecurrenceDate != null) {
+              final completionDate = task.lastRecurrenceDate!;
+              return completionDate.year == date.year &&
+                  completionDate.month == date.month &&
+                  completionDate.day == date.day;
+            }
+            return false;
+          })
+          .cast<Task>()
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
   bool _needsNewOccurrence(Task task, DateTime now) {
     if (!task.isRecurring) return false;
 

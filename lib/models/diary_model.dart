@@ -6,7 +6,6 @@ class DiaryEntry {
   final String content;
   final DateTime date;
   final String mood;
-  final bool isPrivate;
   final DateTime createdAt;
 
   DiaryEntry({
@@ -15,7 +14,6 @@ class DiaryEntry {
     required this.content,
     required this.date,
     required this.mood,
-    required this.isPrivate,
     required this.createdAt,
   });
 
@@ -26,7 +24,6 @@ class DiaryEntry {
       'content': content,
       'date': Timestamp.fromDate(date),
       'mood': mood,
-      'isPrivate': isPrivate,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
@@ -39,7 +36,6 @@ class DiaryEntry {
       content: map['content'] ?? '',
       date: (map['date'] as Timestamp).toDate(),
       mood: map['mood'] ?? '😊',
-      isPrivate: map['isPrivate'] ?? false,
       createdAt: (map['createdAt'] as Timestamp).toDate(),
     );
   }
@@ -61,7 +57,6 @@ class DiaryEntry {
       content: '',
       date: DateTime(now.year, now.month, now.day),
       mood: '😊',
-      isPrivate: false,
       createdAt: now,
     );
   }

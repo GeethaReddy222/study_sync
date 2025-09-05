@@ -10,6 +10,7 @@ import 'package:study_sync/screens/add_task_screen.dart';
 import 'package:study_sync/screens/diary_screen.dart';
 import 'package:study_sync/screens/progress_screen.dart';
 import 'package:study_sync/services/notification/notification_service.dart';
+import 'package:study_sync/services/progress_service.dart';
 import 'package:study_sync/widgets/app_bar.dart';
 import 'package:study_sync/widgets/home_drawer.dart';
 
@@ -35,6 +36,15 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _currentIndex = widget.initialTabIndex;
     _loadTasks();
+    _setupProgressTracking();
+  }
+
+  void _setupProgressTracking() {
+    // Call this when tasks change or at the end of each day
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final progressService = ProgressService();
+      await progressService.updateDailyProgress();
+    });
   }
 
   // Handle navigation from drawer
@@ -238,6 +248,10 @@ class _HomeScreenState extends State<HomeScreen> {
           scheduledTime: notificationTime,
         );
       }
+
+      // Update progress tracking after task completion
+      final progressService = ProgressService();
+      await progressService.updateDailyProgress();
 
       await _loadTasks();
     } on FirebaseException catch (e) {

@@ -17,7 +17,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
   bool _isLoading = true;
   int _selectedIndex = 0; // 0 = today, 1 = previous entries
 
-  DiaryEntry? _selectedEntry; // For calendar selected entry
+  DiaryEntry? _selectedEntry;
   DateTime? _selectedDate;
 
   @override
@@ -33,9 +33,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
       setState(() {
         _todaysEntry = entry;
         _isLoading = false;
+        // Set the selected entry to today's entry by default
+        if (_selectedIndex == 0 && entry != null) {
+          _selectedEntry = entry;
+          _selectedDate = DateTime.now();
+        }
       });
     } catch (e) {
-      print("Error loading today's entry: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -51,15 +55,19 @@ class _DiaryScreenState extends State<DiaryScreen> {
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      _selectedEntry = null;
-      _selectedDate = null;
+      if (index == 0 && _todaysEntry != null) {
+        _selectedEntry = _todaysEntry;
+        _selectedDate = DateTime.now();
+      } else {
+        _selectedEntry = null;
+        _selectedDate = null;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -90,7 +98,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
               ),
             ),
 
-            // Tab Navigation
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -130,7 +137,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
             const SizedBox(height: 16),
 
-            // Content
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -159,9 +165,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
   Widget _buildPreviousEntriesView(ThemeData theme) {
     return Column(
       children: [
-        // Pick a Date button with primary color
-        Padding(
-          padding: const EdgeInsets.all(8.0),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
           child: ElevatedButton.icon(
             onPressed: () async {
               final picked = await showDatePicker(
@@ -169,7 +175,25 @@ class _DiaryScreenState extends State<DiaryScreen> {
                 initialDate: DateTime.now(),
                 firstDate: DateTime(2000),
                 lastDate: DateTime.now(),
+                builder: (BuildContext context, Widget? child) {
+                  return Theme(
+                    data: ThemeData.light().copyWith(
+                      dialogBackgroundColor: Colors.white,
+                      colorScheme: ColorScheme.light(
+                        primary: theme.colorScheme.primary,
+                      ),
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.9,
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
               );
+
               if (picked != null) {
                 final entry = await _diaryService.getEntryForDate(picked);
                 setState(() {
@@ -181,13 +205,13 @@ class _DiaryScreenState extends State<DiaryScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
             icon: const Icon(Icons.calendar_month),
-            label: const Text("Pick a Date"),
+            label: const Text("Pick a Date", style: TextStyle(fontSize: 16)),
           ),
         ),
 
-        // Show only the selected entry or empty state
         Expanded(
           child: _selectedEntry != null
               ? _buildEntryContent(theme, _selectedEntry!)
@@ -243,7 +267,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (entry.isPrivate) const Icon(Icons.lock_outline, size: 16),
                 ],
               ),
               const SizedBox(height: 12),
